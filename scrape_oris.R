@@ -29,7 +29,7 @@ main <- function() {
     })
   }
   
-  zavody_data <- map_dfr(zavody_url, ~{ Sys.sleep(1); scrape_zavod(.x) }) |>
+  zavody_data <- map_dfr(zavody_url %>% head(2), ~{ Sys.sleep(1); scrape_zavod(.x) }) |>
     mutate(scraped_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
   
   dir.create("data", showWarnings = FALSE)
@@ -37,5 +37,6 @@ main <- function() {
   readr::write_csv(zavody_data, outfile)
   message("Wrote: ", outfile)
 }
+
 
 if (identical(environment(), globalenv())) main()
