@@ -2,7 +2,7 @@ name: Scrape ORIS daily
 
 on:
   schedule:
-    - cron: "10 4 * * *"
+    - cron: "10 4 * * *"   # 04:10 UTC (~06:10 Prague in CEST)
   workflow_dispatch: {}
 
 permissions:
@@ -12,8 +12,15 @@ jobs:
   run-r:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+
+    # Use an R-ready container to avoid slow installs
     container:
       image: rocker/r2u:24.04
+
+    # 👇 Ensure every `run:` happens inside the checked-out repo
+    defaults:
+      run:
+        working-directory: ${{ github.workspace }}
 
     steps:
       - name: Checkout repo
@@ -30,27 +37,30 @@ jobs:
             r-cran-tidyverse r-cran-rvest r-cran-xml2 \
             r-cran-stringr r-cran-purrr r-cran-readr
 
+      - name: Sanity: confirm we are in a Git repo
+        run: |
+          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
+          pwd
+          ls -la
+          git rev-parse --is-inside-work-tree
+
       - name: Run scraper
         run: Rscript scrape_oris.R
 
       - name: Commit & push new data (if changed)
-        working-directory: ${{ github.workspace }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          # Debug: confirm we’re in a repo
-          git rev-parse --is-inside-work-tree
-
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-          # Only add if files exist
+          # Stage only if files exist
           if ls data/*.csv >/dev/null 2>&1; then
             git add data/*.csv
           fi
 
-          # Commit only on changes
+          # Commit only when there are staged changes
           if ! git diff --cached --quiet; then
             git commit -m "chore: update ORIS scrape ($(date +'%Y-%m-%d'))"
             git push
@@ -58,7 +68,7 @@ jobs:
             echo "No data changes to commit."
           fi
 
-      - name: Upload artifact
+      - name: Upload artifact (optional)
         if: always()
         uses: actions/upload-artifact@v4
         with:
