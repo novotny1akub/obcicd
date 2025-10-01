@@ -18,7 +18,8 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0   # we may rebase before pushing
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Install (binary) R packages
         run: |
@@ -29,23 +30,17 @@ jobs:
             r-cran-stringr r-cran-purrr r-cran-readr
 
       - name: Run scraper
-        env:
-          GITHUB_WORKSPACE: ${{ github.workspace }}
         run: |
-          # Ensure we run from the repo root inside the container
-          cd "$GITHUB_WORKSPACE"
-          Rscript -e 'setwd(Sys.getenv("GITHUB_WORKSPACE")); source("scrape_oris.R")'
+          Rscript scrape_oris.R
 
       - name: Commit & push changes (if any)
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd "$GITHUB_WORKSPACE"
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config user.name "${GITHUB_ACTOR}"
           git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
 
-          # Stage everything and commit only if there are changes
           git add -A
           if git diff --cached --quiet; then
             echo "No changes to commit."
@@ -53,6 +48,5 @@ jobs:
           fi
 
           git commit -m "Automated scrape: $(date -u +'%Y-%m-%dT%H:%M:%SZ') [skip ci]"
-          # Rebase in case main moved
           git pull --rebase origin "${GITHUB_REF_NAME}"
           git push origin HEAD:"${GITHUB_REF_NAME}"
