@@ -3,22 +3,24 @@ name: CI
 on:
   push:
     branches: [ main ]
-  pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: write   # allow pushing with GITHUB_TOKEN
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
     container:
       image: rocker/r2u:24.04
-      # IMPORTANT: do NOT override -w, GitHub mounts the repo at /__w/<repo>/<repo>
-      # If you do need it, use /__w/obcicd/obcicd
 
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # we may rebase before pushing
 
-      - name: Install system packages and R packages (from binaries)
+      - name: Install (binary) R packages
         run: |
           apt-get update
           apt-get install -y \
@@ -27,6 +29,30 @@ jobs:
             r-cran-stringr r-cran-purrr r-cran-readr
 
       - name: Run scraper
-        run: Rscript scrape_oris.R
-        # No working-directory override needed;
-        # $GITHUB_WORKSPACE already points to /__w/obcicd/obcicd
+        env:
+          GITHUB_WORKSPACE: ${{ github.workspace }}
+        run: |
+          # Ensure we run from the repo root inside the container
+          cd "$GITHUB_WORKSPACE"
+          Rscript -e 'setwd(Sys.getenv("GITHUB_WORKSPACE")); source("scrape_oris.R")'
+
+      - name: Commit & push changes (if any)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cd "$GITHUB_WORKSPACE"
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+
+          # Stage everything and commit only if there are changes
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Automated scrape: $(date -u +'%Y-%m-%dT%H:%M:%SZ') [skip ci]"
+          # Rebase in case main moved
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin HEAD:"${GITHUB_REF_NAME}"
