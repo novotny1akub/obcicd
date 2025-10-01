@@ -4,6 +4,8 @@ on:
   push:
     branches: [ main ]
   workflow_dispatch:
+  schedule:
+    - cron: "45 13 * * *"  # Every day at 15:45 Prague (13:45 UTC)
 
 permissions:
   contents: write   # allow pushing with GITHUB_TOKEN
@@ -20,7 +22,6 @@ jobs:
         run: |
           apt-get update
           apt-get install -y git ca-certificates
-
       # 2) Real git checkout (creates .git in the workspace)
       - name: Check out repository
         uses: actions/checkout@v4
@@ -35,7 +36,6 @@ jobs:
           apt-get install -y \
             r-cran-tidyverse r-cran-rvest r-cran-xml2 \
             r-cran-stringr r-cran-purrr r-cran-readr
-
       # 4) Run your script (default workdir is the repo in container: /__w/obcicd/obcicd)
       - name: Run scraper
         run: Rscript scrape_oris.R
@@ -49,13 +49,11 @@ jobs:
           git config --global --add safe.directory "$GITHUB_WORKSPACE"
           git config user.name "${GITHUB_ACTOR}"
           git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
-
           git add -A
           if git diff --cached --quiet; then
             echo "No changes to commit."
             exit 0
           fi
-
           git commit -m "Automated scrape: $(date -u +'%Y-%m-%dT%H:%M:%SZ') [skip ci]"
           # Rebase in case main moved
           git pull --rebase origin "${GITHUB_REF_NAME}"
