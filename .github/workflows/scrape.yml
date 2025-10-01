@@ -1,27 +1,62 @@
-name: scrape
+name: CI
 
 on:
-  schedule:
-    - cron: "40 13 * * *"   # 13:40 UTC → 15:40 Prague (CEST), 14:40 CET in winter
-  workflow_dispatch: {}      # enables manual run from Actions tab
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # allow pushing with GITHUB_TOKEN
 
 jobs:
   scrape:
     runs-on: ubuntu-latest
+    container:
+      image: rocker/r2u:24.04
+
     steps:
+      # 1) Ensure git exists BEFORE checkout (so checkout creates a real .git repo)
+      - name: Install git (for checkout)
+        run: |
+          apt-get update
+          apt-get install -y git ca-certificates
+
+      # 2) Real git checkout (creates .git in the workspace)
       - name: Check out repository
         uses: actions/checkout@v4
-
-      # Add your scraping steps here. Example:
-      - name: Set up Python
-        uses: actions/setup-python@v5
         with:
-          python-version: "3.x"
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Install dependencies
+      # 3) Install binary R packages (fast with r2u)
+      - name: Install R packages (binary)
         run: |
-          pip install -r requirements.txt
+          apt-get update
+          apt-get install -y \
+            r-cran-tidyverse r-cran-rvest r-cran-xml2 \
+            r-cran-stringr r-cran-purrr r-cran-readr
 
+      # 4) Run your script (default workdir is the repo in container: /__w/obcicd/obcicd)
       - name: Run scraper
+        run: Rscript scrape_oris.R
+
+      # 5) Commit & push changes if any
+      - name: Commit & push changes (if any)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          python scrape.py
+          # mark workspace safe for git in containers
+          git config --global --add safe.directory "$GITHUB_WORKSPACE"
+          git config user.name "${GITHUB_ACTOR}"
+          git config user.email "${GITHUB_ACTOR}@users.noreply.github.com"
+
+          git add -A
+          if git diff --cached --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+
+          git commit -m "Automated scrape: $(date -u +'%Y-%m-%dT%H:%M:%SZ') [skip ci]"
+          # Rebase in case main moved
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin HEAD:"${GITHUB_REF_NAME}"
