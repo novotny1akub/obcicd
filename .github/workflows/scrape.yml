@@ -1,34 +1,28 @@
+# from a local clone (or use the web editor)
+git checkout main
+mkdir -p .github/workflows
+printf '%s\n' "\
 name: Scrape ORIS daily
-
 on:
   schedule:
-    - cron: "10 4 * * *"   # 04:10 UTC (~06:10 Prague in CEST)
+    - cron: '10 4 * * *'
   workflow_dispatch: {}
-
 permissions:
   contents: write
-
 jobs:
   run-r:
     runs-on: ubuntu-latest
     timeout-minutes: 15
-
-    # Use an R-ready container to avoid slow installs
     container:
       image: rocker/r2u:24.04
-
-    # 👇 Ensure every `run:` happens inside the checked-out repo
     defaults:
       run:
-        working-directory: ${{ github.workspace }}
-
+        working-directory: \${{ github.workspace }}
     steps:
-      - name: Checkout repo
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
         with:
           fetch-depth: 0
           persist-credentials: true
-
       - name: Install tools and CRAN binaries
         run: |
           apt-get update
@@ -36,42 +30,23 @@ jobs:
           apt-get install -y \
             r-cran-tidyverse r-cran-rvest r-cran-xml2 \
             r-cran-stringr r-cran-purrr r-cran-readr
-
-      - name: Sanity: confirm we are in a Git repo
-        run: |
-          echo "GITHUB_WORKSPACE=$GITHUB_WORKSPACE"
-          pwd
-          ls -la
-          git rev-parse --is-inside-work-tree
-
       - name: Run scraper
         run: Rscript scrape_oris.R
-
       - name: Commit & push new data (if changed)
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: \${{ secrets.GITHUB_TOKEN }}
         run: |
-          git config --global --add safe.directory "$GITHUB_WORKSPACE"
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-
-          # Stage only if files exist
-          if ls data/*.csv >/dev/null 2>&1; then
-            git add data/*.csv
-          fi
-
-          # Commit only when there are staged changes
+          git config --global --add safe.directory \"\$GITHUB_WORKSPACE\"
+          git config user.name  \"github-actions[bot]\"
+          git config user.email \"41898282+github-actions[bot]@users.noreply.github.com\"
+          if ls data/*.csv >/dev/null 2>&1; then git add data/*.csv; fi
           if ! git diff --cached --quiet; then
-            git commit -m "chore: update ORIS scrape ($(date +'%Y-%m-%d'))"
+            git commit -m \"chore: update ORIS scrape (\$(date +'%Y-%m-%d'))\"
             git push
           else
-            echo "No data changes to commit."
+            echo \"No data changes to commit.\"
           fi
-
-      - name: Upload artifact (optional)
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: oris-scrape-${{ github.run_id }}
-          path: data/*.csv
-          if-no-files-found: ignore
+" > .github/workflows/scrape.yml
+git add .github/workflows/scrape.yml
+git commit -m "Add scrape workflow"
+git push
