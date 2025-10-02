@@ -1,3 +1,41 @@
+name: Bake CSV into HTML (bash only)
+
+on:
+  push:
+    paths:
+      - data/oris_data.csv
+      - docs/index.tmpl.html
+      - .github/workflows/bake-data-into-html.yml
+  workflow_dispatch:
+
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Sanity check files
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la
+          ls -la docs || true
+          ls -la data || true
+          test -f docs/index.tmpl.html || { echo "ERROR: docs/index.tmpl.html not found"; exit 1; }
+          test -f data/oris_data.csv   || { echo "ERROR: data/oris_data.csv not found"; exit 1; }
+          if grep -q "__ORIS_DATA__" docs/index.tmpl.html; then
+            echo "Found __ORIS_DATA__ token in template."
+          elif grep -q "<!--DATA:START-->" docs/index.tmpl.html; then
+            echo "Found DATA markers."
+          else
+            echo "WARNING: No placeholder found in template."
+          fi
+
       - name: Convert CSV -> JSON (awk, mapped fields)
         shell: bash
         run: |
@@ -5,95 +43,5 @@
           CSV="data/oris_data.csv"
           JSON="data/oris_data.json"
 
-          # AWK CSV parser: FPAT treats comma-separated *fields* but preserves commas inside "...".
-          # We then map:
-          #   url          -> link
-          #   datum        -> date
-          #   zavod_nazev  -> name
-          #   misto_konani -> place
-          #   gps_zavod    -> lat/lon (split by comma)
-          #
-          # Output objects with exactly the keys the page expects: date, name, place, link, lat, lon.
           awk -v FPAT='([^,]+)|(\"([^\"]|\"\")*\")' '
-            function json_escape(s,    t) {
-              gsub(/\\/, "\\\\", s)
-              gsub(/"/, "\\\"", s)
-              gsub(/\r/, "", s)
-              return s
-            }
-            BEGIN {
-              OFS=""
-              print "["
-              row = 0
-            }
-            NR==1 {
-              # header row
-              n = split($0, hdr)
-              for (i=1; i<=n; i++) {
-                gsub(/^"|"$/, "", hdr[i])
-                idx[hdr[i]] = i
-              }
-              # sanity: required columns
-              req[1]="datum"; req[2]="zavod_nazev"; req[3]="misto_konani"; req[4]="url"; req[5]="gps_zavod"
-              for (k in req) if (!(req[k] in idx)) {
-                print "]" > "/dev/stderr"
-                printf "Missing required column: %s\n", req[k] > "/dev/stderr"
-                exit 1
-              }
-              next
-            }
-            {
-              # skip empty lines
-              if (NF == 0) next
-
-              # Pull raw values safely
-              function field(i,   v){
-                v = (i<=NF ? $i : "")
-                gsub(/^"|"$/, "", v)      # strip enclosing CSV quotes
-                gsub(/""/, "\"", v)       # undouble quotes
-                return v
-              }
-
-              date  = field(idx["datum"])
-              name  = field(idx["zavod_nazev"])
-              place = field(idx["misto_konani"])
-              link  = field(idx["url"])
-              gps   = field(idx["gps_zavod"])
-
-              # Split lat/lon from gps (if present)
-              lat = ""; lon = ""
-              if (gps != "" && index(gps, ",") > 0) {
-                split(gps, parts, /, */)
-                lat = parts[1]; lon = parts[2]
-              }
-
-              # Skip rows without essential coords or date
-              if (date == "" || lat == "" || lon == "") next
-
-              # JSON escape text fields
-              date  = json_escape(date)
-              name  = json_escape(name)
-              place = json_escape(place)
-              link  = json_escape(link)
-              lat   = json_escape(lat)
-              lon   = json_escape(lon)
-
-              if (row++ > 0) print ","
-              printf "{"
-              printf "\"date\":\"%s\"",  date
-              printf ",\"name\":\"%s\"",  name
-              printf ",\"place\":\"%s\"", place
-              printf ",\"link\":\"%s\"",  link
-              printf ",\"lat\":\"%s\"",   lat
-              printf ",\"lon\":\"%s\"",   lon
-              print "}"
-            }
-            END {
-              print "]"
-            }
-          ' "$CSV" > "$JSON"
-
-          echo "Wrote $(wc -c < "$JSON") bytes to $JSON"
-          echo "Preview:"
-          head -c 400 "$JSON" || true
-          echo
+            function json_escape(s){ gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s); gsub(/\r_
