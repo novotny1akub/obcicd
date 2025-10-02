@@ -33,12 +33,13 @@ main <- function() {
     mutate(scraped_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
   
   dir.create("data", showWarnings = FALSE)
-  outfile <- file.path("data", paste0("oris_", format(Sys.Date(), "%Y-%m-%d"), ".csv"))
-  readr::write_csv(zavody_data, outfile)
+  outfile <- file.path("data", paste0("oris_data.csv"))
+  readr::write_csv(zavody_data, outfile, na = "")
   message("Wrote: ", outfile)
 }
 
 
 if (identical(environment(), globalenv())) main()
+
 
 
