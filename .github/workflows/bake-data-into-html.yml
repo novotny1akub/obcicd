@@ -44,4 +44,108 @@ jobs:
           JSON="data/oris_data.json"
 
           awk -v FPAT='([^,]+)|(\"([^\"]|\"\")*\")' '
-            function json_escape(s){ gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s); gsub(/\r_
+            function json_escape(s){ gsub(/\\/, "\\\\", s); gsub(/"/, "\\\"", s); gsub(/\r/, "", s); return s }
+            BEGIN { OFS=""; print "["; row=0 }
+            NR==1 {
+              n = split($0, hdr)
+              for (i=1;i<=n;i++){ gsub(/^"|"$/, "", hdr[i]); idx[hdr[i]]=i }
+              req[1]="datum"; req[2]="zavod_nazev"; req[3]="misto_konani"; req[4]="url"; req[5]="gps_zavod"
+              for (k in req) if (!(req[k] in idx)) { printf "Missing column: %s\n", req[k] > "/dev/stderr"; exit 1 }
+              next
+            }
+            {
+              if (NF==0) next
+              function field(i, v){ v=(i<=NF?$i:""); gsub(/^"|"$/, "", v); gsub(/""/, "\"", v); return v }
+              date  = field(idx["datum"])
+              name  = field(idx["zavod_nazev"])
+              place = field(idx["misto_konani"])
+              link  = field(idx["url"])
+              gps   = field(idx["gps_zavod"])
+
+              lat=""; lon=""
+              if (gps != "" && index(gps, ",")>0) { split(gps, p, /, */); lat=p[1]; lon=p[2] }
+              if (date=="" || lat=="" || lon=="") next
+
+              date=json_escape(date); name=json_escape(name); place=json_escape(place); link=json_escape(link)
+              lat=json_escape(lat); lon=json_escape(lon)
+
+              if (row++>0) print ","
+              printf "{"
+              printf "\"date\":\"%s\"", date
+              printf ",\"name\":\"%s\"", name
+              printf ",\"place\":\"%s\"", place
+              printf ",\"link\":\"%s\"", link
+              printf ",\"lat\":\"%s\"", lat
+              printf ",\"lon\":\"%s\"", lon
+              print "}"
+            }
+            END { print "]" }
+          ' "$CSV" > "$JSON"
+
+          echo "JSON preview:"
+          head -c 400 "$JSON" || true
+          echo
+
+      - name: Inject JSON into template
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEMPLATE="docs/index.tmpl.html"
+          OUT="docs/index.html"
+          JSON="data/oris_data.json"
+
+          if grep -q '<!--DATA:START-->' "$TEMPLATE"; then
+            echo "Using marker replacement."
+            TMP_SNIP="$(mktemp)"
+            {
+              echo '<script>'
+              echo -n '  window.ORIS_DATA = '
+              cat "$JSON"
+              echo ';'
+              echo '</script>'
+            } > "$TMP_SNIP"
+
+            awk -v snip="$TMP_SNIP" '
+              BEGIN{ while((getline l<snip)>0){ repl=repl l "\n" } }
+              {
+                if (state==0) {
+                  if ($0 ~ /<!--DATA:START-->/) { print "<!--DATA:START-->"; printf "%s", repl; state=1 }
+                  else print
+                } else {
+                  if ($0 ~ /<!--DATA:END-->/) { print "<!--DATA:END-->"; state=0 }
+                }
+              }
+              END{ if (state==1) print "<!--DATA:END-->" }
+            ' "$TEMPLATE" > "$OUT"
+            rm -f "$TMP_SNIP"
+          else
+            echo "Using __ORIS_DATA__ token replacement."
+            sed -e "/__ORIS_DATA__/{
+              r $JSON
+              s/__ORIS_DATA__//g
+            }" "$TEMPLATE" > "$OUT"
+          fi
+
+          echo "Built $OUT"
+          nl -ba "$OUT" | sed -n '1,40p'
+
+      - name: Upload built HTML (artifact)
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-index-html
+          path: docs/index.html
+
+      - name: Commit & push if changed (supports new file)
+        shell: bash
+        run: |
+          set -euo pipefail
+          git add -N docs/index.html || true   # include untracked in diff
+          if git diff --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git add docs/index.html data/oris_data.json
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Bake data into docs/index.html"
+          git push
