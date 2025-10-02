@@ -1,0 +1,131 @@
+name: Bake CSV into HTML (bash only)
+
+on:
+  push:
+    paths:
+      - 'data/oris_data.csv'
+      - 'docs/index.tmpl.html'
+      - '.github/workflows/bake-data-into-html.yml'
+  workflow_dispatch:
+
+jobs:
+  bake:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      # Convert CSV -> JSON with awk (handles quoted fields reasonably well)
+      - name: Convert CSV to JSON (awk only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          CSV="data/oris_data.csv"
+          JSON="data/oris_data.json"
+
+          # awk with FPAT to handle commas inside double-quoted fields
+          awk -v FPAT='([^,]+)|(\"([^\"]|\"\")*\")' '
+            BEGIN {
+              OFS=""; print "["; row=0
+            }
+            NR==1 {
+              n = split($0, hdr)
+              # strip quotes from headers
+              for (i=1;i<=n;i++) { gsub(/^"|"$/, "", hdr[i]) }
+              next
+            }
+            {
+              if (NF==0) next
+              if (row++>0) print ","
+              print "{"
+              for (i=1;i<=n;i++) {
+                key = hdr[i]
+                val = (i<=NF ? $i : "")
+                # strip surrounding quotes if present
+                gsub(/^"|"$/, "", val)
+                # unescape doubled quotes inside quoted CSV fields
+                gsub(/""/, "\"", val)
+                # JSON escape backslash and quotes
+                gsub(/\\/,"\\\\", val)
+                gsub(/\"/,"\\\"", val)
+                gsub(/\r/,"", val)
+                printf "%s\"%s\":\"%s\"", (i>1?",":""), key, val
+              }
+              print "}"
+            }
+            END { print "]" }
+          ' "$CSV" > "$JSON"
+
+          echo "Wrote $(wc -c < "$JSON") bytes to $JSON"
+
+      # Build docs/index.html by replacing the placeholder with the JSON
+      - name: Inject JSON into template (sed only)
+        shell: bash
+        run: |
+          set -euo pipefail
+          TEMPLATE="docs/index.tmpl.html"
+          OUT="docs/index.html"
+          JSON="data/oris_data.json"
+
+          # Create a temp file with the JSON content safely wrapped for sed
+          # We use a here-doc to assemble the final replacement snippet.
+          TMP_SNIP="$(mktemp)"
+          {
+            echo '<script>'
+            echo -n '  window.ORIS_DATA = '
+            cat "$JSON"
+            echo ';'
+            echo '</script>'
+          } > "$TMP_SNIP"
+
+          # Replace the whole marker block OR the __ORIS_DATA__ token.
+          # 1) If template has the marker block, replace the entire block contents.
+          # 2) Otherwise, just replace the __ORIS_DATA__ token.
+          if grep -q '<!--DATA:START-->' "$TEMPLATE"; then
+            awk -v snip="$TMP_SNIP" '
+              BEGIN{
+                while((getline l<snip)>0){ repl = repl l "\n" }
+              }
+              {
+                if (state==0) {
+                  if ($0 ~ /<!--DATA:START-->/) {
+                    print "<!--DATA:START-->"
+                    print repl
+                    state=1
+                  } else {
+                    print
+                  }
+                } else {
+                  if ($0 ~ /<!--DATA:END-->/) {
+                    print "<!--DATA:END-->"
+                    state=0
+                  }
+                }
+              }
+            ' "$TEMPLATE" > "$OUT"
+          else
+            # Fallback: replace the __ORIS_DATA__ token inside a script tag
+            sed -e "/__ORIS_DATA__/{
+              r $JSON
+              d
+            }" "$TEMPLATE" > "$OUT"
+          fi
+
+          rm -f "$TMP_SNIP"
+          echo "Generated $OUT"
+
+      - name: Commit & push if changed
+        shell: bash
+        run: |
+          set -euo pipefail
+          if git diff --quiet; then
+            echo "No changes to commit."
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add docs/index.html
+          git commit -m "Bake data into HTML (bash only)"
+          git push
