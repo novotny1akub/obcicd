@@ -1,164 +1,99 @@
-name: Bake CSV into HTML (bash only)
-
-on:
-  push:
-    paths:
-      - 'data/oris_data.csv'
-      - 'docs/index.tmpl.html'
-      - '.github/workflows/bake-data-into-html.yml'
-  workflow_dispatch:
-
-jobs:
-  bake:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Sanity check files
-        shell: bash
-        run: |
-          set -euo pipefail
-          echo "Repo root:"
-          ls -la
-          echo "docs/:"
-          ls -la docs || true
-          echo "data/:"
-          ls -la data || true
-
-          test -f docs/index.tmpl.html || { echo "ERROR: docs/index.tmpl.html not found"; exit 1; }
-          test -f data/oris_data.csv   || { echo "ERROR: data/oris_data.csv not found"; exit 1; }
-
-          # Show placeholder presence
-          if grep -q "__ORIS_DATA__" docs/index.tmpl.html; then
-            echo "Found __ORIS_DATA__ token in template."
-          elif grep -q "<!--DATA:START-->" docs/index.tmpl.html; then
-            echo "Found <!--DATA:START--> / <!--DATA:END--> markers in template."
-          else
-            echo "WARNING: No __ORIS_DATA__ token or markers found in template."
-          fi
-
-      - name: Convert CSV -> JSON (awk)
+      - name: Convert CSV -> JSON (awk, mapped fields)
         shell: bash
         run: |
           set -euo pipefail
           CSV="data/oris_data.csv"
           JSON="data/oris_data.json"
 
-          # FPAT handles quoted CSV fields with commas
+          # AWK CSV parser: FPAT treats comma-separated *fields* but preserves commas inside "...".
+          # We then map:
+          #   url          -> link
+          #   datum        -> date
+          #   zavod_nazev  -> name
+          #   misto_konani -> place
+          #   gps_zavod    -> lat/lon (split by comma)
+          #
+          # Output objects with exactly the keys the page expects: date, name, place, link, lat, lon.
           awk -v FPAT='([^,]+)|(\"([^\"]|\"\")*\")' '
-            BEGIN { OFS=""; print "["; row=0 }
+            function json_escape(s,    t) {
+              gsub(/\\/, "\\\\", s)
+              gsub(/"/, "\\\"", s)
+              gsub(/\r/, "", s)
+              return s
+            }
+            BEGIN {
+              OFS=""
+              print "["
+              row = 0
+            }
             NR==1 {
+              # header row
               n = split($0, hdr)
-              for (i=1;i<=n;i++) { gsub(/^"|"$/, "", hdr[i]) }
+              for (i=1; i<=n; i++) {
+                gsub(/^"|"$/, "", hdr[i])
+                idx[hdr[i]] = i
+              }
+              # sanity: required columns
+              req[1]="datum"; req[2]="zavod_nazev"; req[3]="misto_konani"; req[4]="url"; req[5]="gps_zavod"
+              for (k in req) if (!(req[k] in idx)) {
+                print "]" > "/dev/stderr"
+                printf "Missing required column: %s\n", req[k] > "/dev/stderr"
+                exit 1
+              }
               next
             }
             {
-              if (NF==0) next
-              if (row++>0) print ","
-              print "{"
-              for (i=1;i<=n;i++) {
-                key = hdr[i]
-                val = (i<=NF ? $i : "")
-                gsub(/^"|"$/, "", val)    # strip CSV quotes
-                gsub(/""/, "\"", val)     # un-double quotes inside quoted fields
-                gsub(/\\/,"\\\\", val)    # JSON escape backslashes
-                gsub(/\"/,"\\\"", val)    # JSON escape quotes
-                gsub(/\r/,"", val)
-                printf "%s\"%s\":\"%s\"", (i>1?",":""), key, val
+              # skip empty lines
+              if (NF == 0) next
+
+              # Pull raw values safely
+              function field(i,   v){
+                v = (i<=NF ? $i : "")
+                gsub(/^"|"$/, "", v)      # strip enclosing CSV quotes
+                gsub(/""/, "\"", v)       # undouble quotes
+                return v
               }
+
+              date  = field(idx["datum"])
+              name  = field(idx["zavod_nazev"])
+              place = field(idx["misto_konani"])
+              link  = field(idx["url"])
+              gps   = field(idx["gps_zavod"])
+
+              # Split lat/lon from gps (if present)
+              lat = ""; lon = ""
+              if (gps != "" && index(gps, ",") > 0) {
+                split(gps, parts, /, */)
+                lat = parts[1]; lon = parts[2]
+              }
+
+              # Skip rows without essential coords or date
+              if (date == "" || lat == "" || lon == "") next
+
+              # JSON escape text fields
+              date  = json_escape(date)
+              name  = json_escape(name)
+              place = json_escape(place)
+              link  = json_escape(link)
+              lat   = json_escape(lat)
+              lon   = json_escape(lon)
+
+              if (row++ > 0) print ","
+              printf "{"
+              printf "\"date\":\"%s\"",  date
+              printf ",\"name\":\"%s\"",  name
+              printf ",\"place\":\"%s\"", place
+              printf ",\"link\":\"%s\"",  link
+              printf ",\"lat\":\"%s\"",   lat
+              printf ",\"lon\":\"%s\"",   lon
               print "}"
             }
-            END { print "]" }
+            END {
+              print "]"
+            }
           ' "$CSV" > "$JSON"
 
-          echo "JSON preview:"
+          echo "Wrote $(wc -c < "$JSON") bytes to $JSON"
+          echo "Preview:"
           head -c 400 "$JSON" || true
           echo
-          echo "Wrote $(wc -c < "$JSON") bytes to $JSON"
-
-      - name: Inject JSON into template (awk/sed)
-        shell: bash
-        run: |
-          set -euo pipefail
-          TEMPLATE="docs/index.tmpl.html"
-          OUT="docs/index.html"
-          JSON="data/oris_data.json"
-
-          # Prefer block markers; fallback to token replacement.
-          if grep -q '<!--DATA:START-->' "$TEMPLATE"; then
-            echo "Using marker block replacement."
-            TMP_SNIP="$(mktemp)"
-            {
-              echo '<script>'
-              echo -n '  window.ORIS_DATA = '
-              cat "$JSON"
-              echo ';'
-              echo '</script>'
-            } > "$TMP_SNIP"
-
-            awk -v snip="$TMP_SNIP" '
-              BEGIN{
-                while((getline l<snip)>0){ repl = repl l "\n" }
-              }
-              {
-                if (state==0) {
-                  if ($0 ~ /<!--DATA:START-->/) {
-                    print "<!--DATA:START-->"
-                    printf "%s", repl
-                    state=1
-                  } else {
-                    print
-                  }
-                } else {
-                  if ($0 ~ /<!--DATA:END-->/) {
-                    print "<!--DATA:END-->"
-                    state=0
-                  }
-                }
-              }
-              END{
-                if (state==1){
-                  # If we never saw DATA:END, still close it
-                  print "<!--DATA:END-->"
-                }
-              }
-            ' "$TEMPLATE" > "$OUT"
-            rm -f "$TMP_SNIP"
-          else
-            echo "Using __ORIS_DATA__ token replacement."
-            sed -e "/__ORIS_DATA__/{
-              r $JSON
-              s/__ORIS_DATA__//g
-            }" "$TEMPLATE" > "$OUT"
-          fi
-
-          echo "Built $OUT"
-          ls -la "$OUT"
-          echo "First 40 lines of output:"
-          nl -ba "$OUT" | sed -n '1,40p'
-
-      - name: Upload built HTML as artifact (for debugging)
-        uses: actions/upload-artifact@v4
-        with:
-          name: built-index-html
-          path: docs/index.html
-
-      - name: Commit & push if changed (handles untracked)
-        shell: bash
-        run: |
-          set -euo pipefail
-          git add -N docs/index.html  # stage intent to make diff include untracked
-          if git diff --quiet; then
-            echo "No changes to commit."
-            exit 0
-          fi
-          git add docs/index.html data/oris_data.json
-          git config user.name  "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Bake data into docs/index.html"
-          git push
