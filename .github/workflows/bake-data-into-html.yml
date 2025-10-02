@@ -16,23 +16,44 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
-      # Convert CSV -> JSON with awk (handles quoted fields reasonably well)
-      - name: Convert CSV to JSON (awk only)
+      - name: Sanity check files
+        shell: bash
+        run: |
+          set -euo pipefail
+          echo "Repo root:"
+          ls -la
+          echo "docs/:"
+          ls -la docs || true
+          echo "data/:"
+          ls -la data || true
+
+          test -f docs/index.tmpl.html || { echo "ERROR: docs/index.tmpl.html not found"; exit 1; }
+          test -f data/oris_data.csv   || { echo "ERROR: data/oris_data.csv not found"; exit 1; }
+
+          # Show placeholder presence
+          if grep -q "__ORIS_DATA__" docs/index.tmpl.html; then
+            echo "Found __ORIS_DATA__ token in template."
+          elif grep -q "<!--DATA:START-->" docs/index.tmpl.html; then
+            echo "Found <!--DATA:START--> / <!--DATA:END--> markers in template."
+          else
+            echo "WARNING: No __ORIS_DATA__ token or markers found in template."
+          fi
+
+      - name: Convert CSV -> JSON (awk)
         shell: bash
         run: |
           set -euo pipefail
           CSV="data/oris_data.csv"
           JSON="data/oris_data.json"
 
-          # awk with FPAT to handle commas inside double-quoted fields
+          # FPAT handles quoted CSV fields with commas
           awk -v FPAT='([^,]+)|(\"([^\"]|\"\")*\")' '
-            BEGIN {
-              OFS=""; print "["; row=0
-            }
+            BEGIN { OFS=""; print "["; row=0 }
             NR==1 {
               n = split($0, hdr)
-              # strip quotes from headers
               for (i=1;i<=n;i++) { gsub(/^"|"$/, "", hdr[i]) }
               next
             }
@@ -43,13 +64,10 @@ jobs:
               for (i=1;i<=n;i++) {
                 key = hdr[i]
                 val = (i<=NF ? $i : "")
-                # strip surrounding quotes if present
-                gsub(/^"|"$/, "", val)
-                # unescape doubled quotes inside quoted CSV fields
-                gsub(/""/, "\"", val)
-                # JSON escape backslash and quotes
-                gsub(/\\/,"\\\\", val)
-                gsub(/\"/,"\\\"", val)
+                gsub(/^"|"$/, "", val)    # strip CSV quotes
+                gsub(/""/, "\"", val)     # un-double quotes inside quoted fields
+                gsub(/\\/,"\\\\", val)    # JSON escape backslashes
+                gsub(/\"/,"\\\"", val)    # JSON escape quotes
                 gsub(/\r/,"", val)
                 printf "%s\"%s\":\"%s\"", (i>1?",":""), key, val
               }
@@ -58,10 +76,12 @@ jobs:
             END { print "]" }
           ' "$CSV" > "$JSON"
 
+          echo "JSON preview:"
+          head -c 400 "$JSON" || true
+          echo
           echo "Wrote $(wc -c < "$JSON") bytes to $JSON"
 
-      # Build docs/index.html by replacing the placeholder with the JSON
-      - name: Inject JSON into template (sed only)
+      - name: Inject JSON into template (awk/sed)
         shell: bash
         run: |
           set -euo pipefail
@@ -69,21 +89,18 @@ jobs:
           OUT="docs/index.html"
           JSON="data/oris_data.json"
 
-          # Create a temp file with the JSON content safely wrapped for sed
-          # We use a here-doc to assemble the final replacement snippet.
-          TMP_SNIP="$(mktemp)"
-          {
-            echo '<script>'
-            echo -n '  window.ORIS_DATA = '
-            cat "$JSON"
-            echo ';'
-            echo '</script>'
-          } > "$TMP_SNIP"
-
-          # Replace the whole marker block OR the __ORIS_DATA__ token.
-          # 1) If template has the marker block, replace the entire block contents.
-          # 2) Otherwise, just replace the __ORIS_DATA__ token.
+          # Prefer block markers; fallback to token replacement.
           if grep -q '<!--DATA:START-->' "$TEMPLATE"; then
+            echo "Using marker block replacement."
+            TMP_SNIP="$(mktemp)"
+            {
+              echo '<script>'
+              echo -n '  window.ORIS_DATA = '
+              cat "$JSON"
+              echo ';'
+              echo '</script>'
+            } > "$TMP_SNIP"
+
             awk -v snip="$TMP_SNIP" '
               BEGIN{
                 while((getline l<snip)>0){ repl = repl l "\n" }
@@ -92,7 +109,7 @@ jobs:
                 if (state==0) {
                   if ($0 ~ /<!--DATA:START-->/) {
                     print "<!--DATA:START-->"
-                    print repl
+                    printf "%s", repl
                     state=1
                   } else {
                     print
@@ -104,28 +121,44 @@ jobs:
                   }
                 }
               }
+              END{
+                if (state==1){
+                  # If we never saw DATA:END, still close it
+                  print "<!--DATA:END-->"
+                }
+              }
             ' "$TEMPLATE" > "$OUT"
+            rm -f "$TMP_SNIP"
           else
-            # Fallback: replace the __ORIS_DATA__ token inside a script tag
+            echo "Using __ORIS_DATA__ token replacement."
             sed -e "/__ORIS_DATA__/{
               r $JSON
-              d
+              s/__ORIS_DATA__//g
             }" "$TEMPLATE" > "$OUT"
           fi
 
-          rm -f "$TMP_SNIP"
-          echo "Generated $OUT"
+          echo "Built $OUT"
+          ls -la "$OUT"
+          echo "First 40 lines of output:"
+          nl -ba "$OUT" | sed -n '1,40p'
 
-      - name: Commit & push if changed
+      - name: Upload built HTML as artifact (for debugging)
+        uses: actions/upload-artifact@v4
+        with:
+          name: built-index-html
+          path: docs/index.html
+
+      - name: Commit & push if changed (handles untracked)
         shell: bash
         run: |
           set -euo pipefail
+          git add -N docs/index.html  # stage intent to make diff include untracked
           if git diff --quiet; then
             echo "No changes to commit."
             exit 0
           fi
+          git add docs/index.html data/oris_data.json
           git config user.name  "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/index.html
-          git commit -m "Bake data into HTML (bash only)"
+          git commit -m "Bake data into docs/index.html"
           git push
