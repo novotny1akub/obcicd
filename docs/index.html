@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Orienteering Races Map</title>
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  
+  <!-- noUiSlider -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nouislider@15.7.0/dist/nouislider.min.css" />
+  <script src="https://cdn.jsdelivr.net/npm/nouislider@15.7.0/dist/nouislider.min.js"></script>
+
+  <style>
+    :root {
+      --bg: #0b0d10; --panel: #14171c; --muted: #9aa4b2; --text: #e6edf3; --accent: #4aa3ff;
+    }
+    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; }
+    .app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+    .controls { display:flex; gap: 1rem; align-items:center; padding: .75rem 1rem; background: var(--panel); }
+    .controls h1 { font-size: 1rem; margin: 0; font-weight: 600; }
+    .slider-wrap { flex: 1 1 auto; }
+    #slider { margin: .25rem 0; }
+    .date-labels { display:flex; justify-content: space-between; font-size:.85rem; color: var(--muted); }
+    .pill { background: rgba(74,163,255,.12); color: var(--accent); padding: .25rem .5rem; border-radius: 999px; font-size: .8rem; }
+    .count { white-space: nowrap; }
+    #map { height: calc(100vh - 64px); width: 100%; }
+    .race-pin { width: 14px; height: 14px; border-radius: 50%; background: #4aa3ff; border: 2px solid #e6edf3; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <div class="controls">
+      <h1>Orienteering Races</h1>
+      <span class="pill" id="status">Loading…</span>
+      <div class="slider-wrap">
+        <div id="slider"></div>
+        <div class="date-labels">
+          <span id="startLabel">—</span><span id="endLabel">—</span>
+        </div>
+      </div>
+      <div class="count"><span id="visibleCount">0</span>/<span id="totalCount">0</span></div>
+    </div>
+    <div id="map"></div>
+  </div>
+
+<!--DATA:START-->
+<script>
+  window.ORIS_DATA = [
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9057"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=8833"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9097"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=8992"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9043"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9135"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9010"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9155"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9117"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9197"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=8834"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9156"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9199"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9118"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9136"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9477"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9492"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=8509"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=8510"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9529"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9058"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9044"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=8835"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=8993"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9011"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9098"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9157"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9119"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9120"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9137"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9099"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9121"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=8994"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=8836"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=8976"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9100"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9138"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9012"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9158"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9122"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9139"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9159"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=8982"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9059"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=8888"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9060"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9317"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=8837"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=9013"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=8886"}
+,
+{
+"url,datum,zavod_nazev,misto_konani,gps_zavod,scraped_at":"https://oris.orientacnisporty.cz/Zavod?id=8887"}
+]
+;
+</script>
+<!--DATA:END-->
+
+  <script>
+    // ---- Helpers ----
+    const parseDMY = (s) => {
+      if (!s) return null;
+      const iso = /^\d{4}-\d{2}-\d{2}$/;
+      if (iso.test(s)) return new Date(s + "T00:00:00");
+      const m = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/);
+      if (!m) return null;
+      const d = parseInt(m[1], 10), mo = parseInt(m[2], 10) - 1, y = parseInt(m[3].length === 2 ? (2000 + parseInt(m[3], 10)) : m[3], 10);
+      return new Date(y, mo, d);
+    };
+    const fmtDate = (d) => d ? d.toLocaleDateString(undefined, {year:'numeric', month:'2-digit', day:'2-digit'}) : "";
+    const toNumberDate = (d) => d ? Math.floor(d.getTime() / 86400000) : NaN;
+    function dotIcon(){ return L.divIcon({ className: 'race-pin', iconSize: [14,14] }); }
+
+    // ---- Map init ----
+    const map = L.map('map');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
+    map.setView([49.8, 15.5], 7);
+    const layerGroup = L.layerGroup().addTo(map);
+
+    let allRecords = [];
+
+    function buildTooltipHTML(r){ return `<div class="tip"><div>${r.name}</div></div>`; }
+    function buildPopupHTML(r){ return `<div><div>${r.name}</div><div>${r.place}</div><a href="${r.link}" target="_blank">Open in ORIS</a></div>`; }
+    function makeMarker(r){ const m=L.marker([r.lat,r.lon],{icon:dotIcon()}); m.bindTooltip(buildTooltipHTML(r)); m.bindPopup(buildPopupHTML(r)); return m; }
+    function refreshMap(a,b){ layerGroup.clearLayers(); let c=0; for(const r of allRecords){ if(r.dateNum>=a&&r.dateNum<=b){ r.marker.addTo(layerGroup); c++; } } document.getElementById('visibleCount').textContent=c; }
+    function initSlider(minNum,maxNum){ const s=document.getElementById('slider'); noUiSlider.create(s,{start:[minNum,maxNum],connect:true,step:1,range:{min:minNum,max:maxNum}}); const st=document.getElementById('startLabel'); const en=document.getElementById('endLabel'); s.noUiSlider.on('update',(v)=>{ const[a,b]=v.map(x=>Math.round(+x)); st.textContent=fmtDate(new Date(a*86400000)); en.textContent=fmtDate(new Date(b*86400000)); refreshMap(a,b); }); const[a0,b0]=s.noUiSlider.get().map(v=>Math.round(+v)); refreshMap(a0,b0); }
+    function fitToVisible(){ const b=L.latLngBounds(); layerGroup.eachLayer(l=>b.extend(l.getLatLng())); if(b.isValid()) map.fitBounds(b.pad(0.15)); }
+
+    // ---- Bootstrap from baked data ----
+    (function(){
+      const status=document.getElementById('status');
+      try {
+        const rows=Array.isArray(window.ORIS_DATA)?window.ORIS_DATA:[];
+        const recs=[];
+        for(const row of rows){
+          const date=parseDMY(row.date);
+          const lat=parseFloat(row.lat), lon=parseFloat(row.lon);
+          if(!date||isNaN(lat)||isNaN(lon)) continue;
+          const rec={date,dateNum:toNumberDate(date),name:row.name||"",place:row.place||"",link:row.link||"",lat,lon};
+          rec.marker=makeMarker(rec); recs.push(rec);
+        }
+        allRecords=recs.sort((a,b)=>a.date-b.date);
+        document.getElementById('totalCount').textContent=allRecords.length;
+        status.textContent='Ready';
+        if(!allRecords.length){ status.textContent='No valid records.'; return; }
+        const minNum=allRecords[0].dateNum, maxNum=allRecords[allRecords.length-1].dateNum;
+        initSlider(minNum,maxNum); fitToVisible();
+      } catch(e){ console.error(e); status.textContent='Error'; }
+    })();
+  </script>
+</body>
+</html>
