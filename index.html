@@ -3,39 +3,40 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orienteering Races – Minimal View</title>
+  <title>Orienteering Races Map</title>
 
-  <!-- noUiSlider (original slider) -->
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- noUiSlider -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nouislider@15.7.0/dist/nouislider.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/nouislider@15.7.0/dist/nouislider.min.js"></script>
 
   <style>
-    :root {
-      --bg:#0b0d10; --panel:#14171c; --muted:#9aa4b2; --text:#e6edf3; --accent:#4aa3ff; --card:#0f1318; --border:#263042;
-    }
-    html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    :root { --bg:#0b0d10; --panel:#14171c; --muted:#9aa4b2; --text:#e6edf3; --accent:#4aa3ff; }
+    html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui, sans-serif; }
     .app { display:grid; grid-template-rows:auto 1fr; height:100%; }
-    .controls { display:flex; gap:1rem; align-items:center; padding:.75rem 1rem; background:var(--panel); border-bottom:1px solid var(--border); }
+    .controls { display:flex; gap:1rem; align-items:center; padding:.75rem 1rem; background:var(--panel); }
     .controls h1 { font-size:1rem; margin:0; font-weight:600; }
-    .pill { background:rgba(74,163,255,.12); color:var(--accent); padding:.25rem .5rem; border-radius:999px; font-size:.8rem; white-space:nowrap; }
-    .count { white-space:nowrap; }
-
-    .slider-wrap { flex:1 1 auto; min-width:240px; }
+    .slider-wrap { flex:1 1 auto; min-width:260px; }
     #slider { margin:.35rem 0 .25rem; }
     .date-labels { display:flex; justify-content:space-between; font-size:.85rem; color:var(--muted); }
-    .fixed-note { font-size:.85rem; color:var(--muted); margin-left:.25rem; }
+    .pill { background:rgba(74,163,255,.12); color:var(--accent); padding:.25rem .5rem; border-radius:999px; font-size:.8rem; white-space:nowrap; }
+    .count { white-space:nowrap; }
+    #map { height:calc(100vh - 64px); width:100%; }
 
-    .list { padding:1rem; display:grid; gap:.75rem; overflow:auto; }
-    .card {
-      background:var(--card); border:1px solid var(--border); border-radius:12px; padding:.8rem .9rem;
-      display:grid; gap:.4rem;
-    }
-    .title { font-weight:600; }
-    .sub { color:var(--muted); font-size:.92rem; }
-    .meta { display:grid; gap:.25rem; font-size:.9rem; }
-    .meta-row { display:grid; grid-template-columns:110px 1fr; gap:.5rem; }
-    .link { color:var(--accent); text-decoration:underline; }
-    .empty { color:var(--muted); padding:2rem 0; text-align:center; }
+    /* Marker style */
+    .race-pin { width:14px; height:14px; border-radius:50%; background:#4aa3ff; border:2px solid #e6edf3; }
+
+    /* Popup styling */
+    .popup-wrap { min-width:260px; }
+    .popup-title { font-weight:600; margin:0 0 .25rem 0; }
+    .popup-sub { color:var(--muted); margin:0 0 .5rem 0; font-size:.9rem; }
+    .popup-table { width:100%; border-collapse:collapse; font-size:.9rem; }
+    .popup-table th, .popup-table td { text-align:left; padding:.2rem .25rem; vertical-align:top; }
+    .popup-table th { color:var(--muted); font-weight:500; white-space:nowrap; }
+    .popup-link { display:inline-block; margin-top:.5rem; color:var(--accent); text-decoration:underline; }
   </style>
 </head>
 <body>
@@ -43,34 +44,30 @@
     <div class="controls">
       <h1>Orienteering Races</h1>
       <span class="pill" id="status">Loading…</span>
-
       <div class="slider-wrap">
         <div id="slider"></div>
         <div class="date-labels">
           <span><strong>From</strong> <span id="startLabel">—</span></span>
-          <span class="fixed-note">Intersecting with <span id="fixedWindow">—</span></span>
           <span><strong>To</strong> <span id="endLabel">—</span></span>
         </div>
       </div>
-
       <div class="count"><span id="visibleCount">0</span>/<span id="totalCount">0</span></div>
     </div>
-
-    <div id="list" class="list"></div>
+    <div id="map"></div>
   </div>
 
   <!--DATA:START-->
   <script>
-    // Replaced by GitHub Actions workflow
+    // Replaced by your pipeline
     window.ORIS_DATA = [{"gps":"49.452057117544,14.004650115967","tbl":[{"nazev":"ORIS ID:","hodnota":"8509"},{"nazev":"Název:","hodnota":"Grant Thornton Mistrovství a Veteraniáda ČR štafet"},{"nazev":"Datum:","hodnota":"04.10.2025"},{"nazev":"Místo konání:","hodnota":"Výšice"},{"nazev":"Start 00:","hodnota":"11:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.452057117544,14.004650115967: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"23.09.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"27.09.2025 23:59 Navýšení vkladu: 50 %r"},{"nazev":"Datum splatnosti:","hodnota":"30.09.2025"}]},{"gps":"49.452336102579,14.004564285278","tbl":[{"nazev":"ORIS ID:","hodnota":"8510"},{"nazev":"Název:","hodnota":"Grant Thornton Mistrovství a Veteraniáda ČR klubů, Mistrovství ČR oblastních výběrů žactva"},{"nazev":"Datum:","hodnota":"05.10.2025"},{"nazev":"Místo konání:","hodnota":"Výšice"},{"nazev":"Start 00:","hodnota":"09:30"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.452336102579,14.004564285278: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"23.09.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"27.09.2025 23:59 Navýšení vkladu: 50 %r"},{"nazev":"Datum splatnosti:","hodnota":"30.09.2025"}]},{"gps":"49.960524735704,18.108043670654","tbl":[{"nazev":"ORIS ID:","hodnota":"9058"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"11.10.2025"},{"nazev":"Místo konání:","hodnota":"Bolatice, rekreační areál SHD Borová"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.960524735704,18.108043670654: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"07.10.2025 23:59"},{"nazev":"Datum splatnosti:","hodnota":"09.10.2025"}]},{"gps":"49.581405217161,15.410385131836","tbl":[{"nazev":"ORIS ID:","hodnota":"9044"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"11.10.2025"},{"nazev":"Místo konání:","hodnota":"Orlovská myslivna u obce Kejžlice"},{"nazev":"Start 00:","hodnota":"10:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.581405217161,15.410385131836: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"06.09.2025 20:15"},{"nazev":"1. termín přihlášek:","hodnota":"05.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"07.10.2025 23:59 Navýšení vkladu: 50 %r"}]},{"gps":"49.980426057391,16.195693016052","tbl":[{"nazev":"ORIS ID:","hodnota":"8835"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"11.10.2025"},{"nazev":"Místo konání:","hodnota":"Dvořisko, louka u rybníka Orličan"},{"nazev":"Start 00:","hodnota":"10:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.980426057391,16.195693016052: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"05.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"06.10.2025 19:59 Navýšení vkladu: 100 %r"},{"nazev":"Datum splatnosti:","hodnota":"06.10.2025"}]},{"gps":"48.93795,17.18087","tbl":[{"nazev":"ORIS ID:","hodnota":"8993"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"11.10.2025"},{"nazev":"Místo konání:","hodnota":"Vacenovice"},{"nazev":"Start 00:","hodnota":"11:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"48.93795,17.18087: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"01.09.2025 01:01"},{"nazev":"1. termín přihlášek:","hodnota":"05.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"07.10.2025 20:00 Navýšení vkladu: 50 %r"},{"nazev":"Datum splatnosti:","hodnota":"07.10.2025"}]},{"gps":"49.956762985803,17.237790226936","tbl":[{"nazev":"ORIS ID:","hodnota":"9011"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"11.10.2025"},{"nazev":"Místo konání:","hodnota":""},{"nazev":"Start 00:","hodnota":"11:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.956762985803,17.237790226936: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"06.09.2025 20:21"},{"nazev":"1. termín přihlášek:","hodnota":"06.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"08.10.2025 23:59 Navýšení vkladu: 150 %r"},{"nazev":"Datum splatnosti:","hodnota":"08.10.2025"}]},{"gps":"50.821539858299,14.269629438221","tbl":[{"nazev":"ORIS ID:","hodnota":"9098"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"11.10.2025"},{"nazev":"Místo konání:","hodnota":"Letiště u obce Bynovec"},{"nazev":"Start 00:","hodnota":"11:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"50.821539858299,14.269629438221: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"01.08.2025 00:00"},{"nazev":"1. termín přihlášek:","hodnota":"05.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"07.10.2025 23:59"},{"nazev":"Datum splatnosti:","hodnota":"08.10.2025"}]},{"gps":"49.721149888189,13.701410310913","tbl":[{"nazev":"ORIS ID:","hodnota":"9157"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"11.10.2025"},{"nazev":"Místo konání:","hodnota":"Dobřív"},{"nazev":"Start 00:","hodnota":"11:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.721149888189,13.701410310913: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"05.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"06.10.2025 22:59 Navýšení vkladu: 50 %r"},{"nazev":"Datum splatnosti:","hodnota":"05.10.2025"}]},{"gps":"49.105075822691,14.015872478485","tbl":[{"nazev":"ORIS ID:","hodnota":"9119"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"11.10.2025"},{"nazev":"Místo konání:","hodnota":"Dub u Prachatic"},{"nazev":"Start 00:","hodnota":"12:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.105075822691,14.015872478485: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"28.08.2025 20:19"},{"nazev":"1. termín přihlášek:","hodnota":"06.10.2025 23:59"}]},{"gps":"49.105033679343,14.015851020813","tbl":[{"nazev":"ORIS ID:","hodnota":"9120"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"12.10.2025"},{"nazev":"Místo konání:","hodnota":"Dub u Prachatic"},{"nazev":"Start 00:","hodnota":"09:30"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.105033679343,14.015851020813: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"28.08.2025 20:29"},{"nazev":"1. termín přihlášek:","hodnota":"06.10.2025 23:59"}]},{"gps":"49.72098341717,13.701324462891","tbl":[{"nazev":"ORIS ID:","hodnota":"9137"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"12.10.2025"},{"nazev":"Místo konání:","hodnota":"Dobřív"},{"nazev":"Start 00:","hodnota":"10:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.72098341717,13.701324462891: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"05.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"06.10.2025 23:59 Navýšení vkladu: 50 %r"},{"nazev":"Datum splatnosti:","hodnota":"05.10.2025"}]},{"gps":"50.821295856407,14.267764074158","tbl":[{"nazev":"ORIS ID:","hodnota":"9099"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"12.10.2025"},{"nazev":"Místo konání:","hodnota":"Letiště u obce Bynovec"},{"nazev":"Start 00:","hodnota":"11:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"50.821295856407,14.267764074158: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"05.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"07.10.2025 23:59 Navýšení vkladu: 50 %r"},{"nazev":"Datum splatnosti:","hodnota":"08.10.2025"}]},{"gps":"49.058401223763,13.779687731245","tbl":[{"nazev":"ORIS ID:","hodnota":"9121"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"18.10.2025"},{"nazev":"Místo konání:","hodnota":"Vimperk"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.058401223763,13.779687731245: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"12.10.2025 23:59"}]},{"gps":"49.16641260824,17.841324806213","tbl":[{"nazev":"ORIS ID:","hodnota":"8994"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"18.10.2025"},{"nazev":"Místo konání:","hodnota":"Slopné"},{"nazev":"Start 00:","hodnota":"10:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.16641260824,17.841324806213: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"13.10.2025 23:59"}]},{"gps":"50.720101587955,15.614275932312","tbl":[{"nazev":"ORIS ID:","hodnota":"8836"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"18.10.2025"},{"nazev":"Místo konání:","hodnota":"Špindlerův Mlýn, skiáreál Svatý Petr"},{"nazev":"Start 00:","hodnota":"10:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"50.720101587955,15.614275932312: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"12.10.2025 23:59"},{"nazev":"Datum splatnosti:","hodnota":"15.10.2025"}]},{"gps":"49.646235836432,16.040296554565","tbl":[{"nazev":"ORIS ID:","hodnota":"8976"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"18.10.2025"},{"nazev":"Místo konání:","hodnota":"Fryšava pod Žákovou horou, hřiště u Obecního rybníku"},{"nazev":"Start 00:","hodnota":"10:30"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.646235836432,16.040296554565: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"13.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"15.10.2025 20:00 Navýšení vkladu: 50 %r"},{"nazev":"Datum splatnosti:","hodnota":"17.10.2025"}]},{"gps":"50.678,15.23098","tbl":[{"nazev":"ORIS ID:","hodnota":"9100"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"18.10.2025"},{"nazev":"Místo konání:","hodnota":"Alšovice, sokolovna"},{"nazev":"Start 00:","hodnota":"10:30"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"50.678,15.23098: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"11.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"13.10.2025 23:59 Navýšení vkladu: 50 %r"}]},{"gps":"49.888980485911,14.565564393997","tbl":[{"nazev":"ORIS ID:","hodnota":"9138"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"18.10.2025"},{"nazev":"Místo konání:","hodnota":"Kamenice, osada Těptín"},{"nazev":"Start 00:","hodnota":"10:30"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.888980485911,14.565564393997: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"14.10.2025 23:59"},{"nazev":"Datum splatnosti:","hodnota":"15.10.2025"}]},{"gps":"49.55022442316,17.034065723419","tbl":[{"nazev":"ORIS ID:","hodnota":"9012"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"18.10.2025"},{"nazev":"Místo konání:","hodnota":"Čechy pod Kosířem"},{"nazev":"Start 00:","hodnota":"11:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.55022442316,17.034065723419: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"15.09.2025 10:07"},{"nazev":"1. termín přihlášek:","hodnota":"12.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"14.10.2025 23:59 Navýšení vkladu: 50 %r"}]},{"gps":"50.369431441582,12.895933202892","tbl":[{"nazev":"ORIS ID:","hodnota":"9158"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"18.10.2025"},{"nazev":"Místo konání:","hodnota":"Hotel Berghof"},{"nazev":"Start 00:","hodnota":"12:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"50.369431441582,12.895933202892: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"17.09.2025 13:54"},{"nazev":"1. termín přihlášek:","hodnota":"12.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"13.10.2025 23:59 Navýšení vkladu: 50 %r"}]},{"gps":"49.83228,13.80199","tbl":[{"nazev":"ORIS ID:","hodnota":"9139"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"19.10.2025"},{"nazev":"Místo konání:","hodnota":""},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.83228,13.80199: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"12.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"15.10.2025 23:59 Navýšení vkladu: 50 %r"}]},{"gps":"50.369616208351,12.895492163954","tbl":[{"nazev":"ORIS ID:","hodnota":"9159"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"19.10.2025"},{"nazev":"Místo konání:","hodnota":"Hotel Berghof"},{"nazev":"Start 00:","hodnota":"10:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"50.369616208351,12.895492163954: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"17.09.2025 14:08"},{"nazev":"1. termín přihlášek:","hodnota":"12.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"13.10.2025 23:59 Navýšení vkladu: 50 %r"}]},{"gps":"49.555131447312,15.876338481903","tbl":[{"nazev":"ORIS ID:","hodnota":"8982"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"19.10.2025"},{"nazev":"Místo konání:","hodnota":"obec Sázava, koupaliště"},{"nazev":"Start 00:","hodnota":"10:30"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.555131447312,15.876338481903: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"12.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"14.10.2025 23:59 Navýšení vkladu: 50 %r"},{"nazev":"Datum splatnosti:","hodnota":"16.10.2025"}]},{"gps":"49.752609595277,18.373378526799","tbl":[{"nazev":"ORIS ID:","hodnota":"9059"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"19.10.2025"},{"nazev":"Místo konání:","hodnota":"Václavovice – fotbalové hřiště"},{"nazev":"Start 00:","hodnota":"11:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.752609595277,18.373378526799: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"15.09.2025 16:10"},{"nazev":"1. termín přihlášek:","hodnota":"14.10.2025 23:59"}]},{"gps":"50.564676130782,13.430957759522","tbl":[{"nazev":"ORIS ID:","hodnota":"8888"},{"nazev":"Název:","hodnota":"GAPP Czech O-Tour 2025 - Krušné hory"},{"nazev":"Datum:","hodnota":"25.10.2025"},{"nazev":"Místo konání:","hodnota":"Lesná, Krušné hory"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"50.564676130782,13.430957759522: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"12.11.2024 20:25"},{"nazev":"1. termín přihlášek:","hodnota":"12.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"15.10.2025 23:59"},{"nazev":"Datum splatnosti:","hodnota":"16.10.2025"}]},{"gps":"50.185025770316,17.052358396765","tbl":[{"nazev":"ORIS ID:","hodnota":"9317"},{"nazev":"Název:","hodnota":"YO!Camp 2025"},{"nazev":"Datum:","hodnota":"25.10.2025"},{"nazev":"Místo konání:","hodnota":"Ostružná, penzion Na mlýně"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"50.185025770316,17.052358396765: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"01.09.2025 23:59"}]},{"gps":"50.151193839037,16.332507133484","tbl":[{"nazev":"ORIS ID:","hodnota":"8837"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"25.10.2025"},{"nazev":"Místo konání:","hodnota":"Jahodov"},{"nazev":"Start 00:","hodnota":"10:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"50.151193839037,16.332507133484: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"19.10.2025 23:59"},{"nazev":"Datum splatnosti:","hodnota":"22.10.2025"}]},{"gps":"49.494779114491,16.680807362423","tbl":[{"nazev":"ORIS ID:","hodnota":"9013"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"25.10.2025"},{"nazev":"Místo konání:","hodnota":"Sportpark Boskovice"},{"nazev":"Start 00:","hodnota":"11:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.494779114491,16.680807362423: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"26.09.2025 19:21"},{"nazev":"1. termín přihlášek:","hodnota":"20.10.2025 22:58"},{"nazev":"2. termín přihlášek:","hodnota":"21.10.2025 23:59 Navýšení vkladu: 50 %r"},{"nazev":"Datum splatnosti:","hodnota":"22.10.2025"}]},{"gps":"50.564717020942,13.430957470629","tbl":[{"nazev":"ORIS ID:","hodnota":"8886"},{"nazev":"Název:","hodnota":"GAPP Czech O-Tour 2025 - Krušné hory - E1"},{"nazev":"Datum:","hodnota":"25.10.2025"},{"nazev":"Místo konání:","hodnota":"Lesná, Krušné hory"},{"nazev":"Start 00:","hodnota":"12:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"50.564717020942,13.430957470629: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"12.11.2024 20:25"},{"nazev":"1. termín přihlášek:","hodnota":"12.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"15.10.2025 23:59"},{"nazev":"Datum splatnosti:","hodnota":"16.10.2025"}]},{"gps":"50.564703390893,13.430979211417","tbl":[{"nazev":"ORIS ID:","hodnota":"8887"},{"nazev":"Název:","hodnota":"GAPP Czech O-Tour 2025 - Krušné hory - E2"},{"nazev":"Datum:","hodnota":"26.10.2025"},{"nazev":"Místo konání:","hodnota":"Lesná, Krušné hory"},{"nazev":"Start 00:","hodnota":"09:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"50.564703390893,13.430979211417: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"12.11.2024 20:25"},{"nazev":"1. termín přihlášek:","hodnota":"12.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"15.10.2025 23:59"},{"nazev":"Datum splatnosti:","hodnota":"16.10.2025"}]},{"gps":"49.510706661738,16.958061909207","tbl":[{"nazev":"ORIS ID:","hodnota":"9014"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"28.10.2025"},{"nazev":"Místo konání:","hodnota":"Ptení"},{"nazev":"Start 00:","hodnota":"11:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.510706661738,16.958061909207: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"29.09.2025 15:20"},{"nazev":"1. termín přihlášek:","hodnota":"22.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"24.10.2025 23:59 Navýšení vkladu: 50 %r"},{"nazev":"Datum splatnosti:","hodnota":"27.09.2025"}]},{"gps":"49.577812195482,16.050537228584","tbl":[{"nazev":"ORIS ID:","hodnota":"9046"},{"nazev":"Název:","hodnota":"Mistrovství oblasti v nočním OB"},{"nazev":"Datum:","hodnota":"01.11.2025"},{"nazev":"Místo konání:","hodnota":"Vysočina aréna Nové Město na Moravě"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.577812195482,16.050537228584: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"26.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"28.10.2025 23:59 Navýšení vkladu: 50 %r"}]},{"gps":"50.395647441775,15.616271495819","tbl":[{"nazev":"ORIS ID:","hodnota":"8838"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"01.11.2025"},{"nazev":"Místo konání:","hodnota":"Lukavec u Hořic"},{"nazev":"Start 00:","hodnota":"10:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"50.395647441775,15.616271495819: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"26.10.2025 23:59"},{"nazev":"Datum splatnosti:","hodnota":"29.10.2025"}]},{"gps":"49.945762495281,14.804530441761","tbl":[{"nazev":"ORIS ID:","hodnota":"9140"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"01.11.2025"},{"nazev":"Místo konání:","hodnota":"Černé Voděrady, louka u Voděradského rybníka"},{"nazev":"Start 00:","hodnota":"10:30"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.945762495281,14.804530441761: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"26.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"28.10.2025 23:59"},{"nazev":"Datum splatnosti:","hodnota":"30.10.2025"}]},{"gps":"49.65685,17.01112","tbl":[{"nazev":"ORIS ID:","hodnota":"9015"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"01.11.2025"},{"nazev":"Místo konání:","hodnota":"Loučka u Litovle"},{"nazev":"Start 00:","hodnota":"11:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.65685,17.01112: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"23.09.2025 16:06"},{"nazev":"1. termín přihlášek:","hodnota":"27.10.2025 00:00"},{"nazev":"2. termín přihlášek:","hodnota":"29.10.2025 00:00 Navýšení vkladu: 50 %r"},{"nazev":"3. termín přihlášek:","hodnota":"30.10.2025 00:00 Navýšení vkladu: 100 %r"}]},{"gps":"49.577676538948,16.050510406494","tbl":[{"nazev":"ORIS ID:","hodnota":"9045"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"01.11.2025"},{"nazev":"Místo konání:","hodnota":"Vysočina aréna Nové Město na Moravě"},{"nazev":"Start 00:","hodnota":"12:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.577676538948,16.050510406494: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"26.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"28.10.2025 23:59"}]},{"gps":"50.777096941806,15.097682476044","tbl":[{"nazev":"ORIS ID:","hodnota":"9101"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"02.11.2025"},{"nazev":"Místo konání:","hodnota":"Střelnice Starý Harcov, Liberec"},{"nazev":"Start 00:","hodnota":"10:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"50.777096941806,15.097682476044: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"26.10.2025 23:59"},{"nazev":"2. termín přihlášek:","hodnota":"29.10.2025 23:59 Navýšení vkladu: 50 %r"}]},{"gps":"49.823220745227,16.104900103072","tbl":[{"nazev":"ORIS ID:","hodnota":"9478"},{"nazev":"Název:","hodnota":"Školení začínajících kartografů"},{"nazev":"Datum:","hodnota":"07.11.2025"},{"nazev":"Místo konání:","hodnota":"Zderaz"},{"nazev":"Start 00:","hodnota":"11:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"49.823220745227,16.104900103072: Google mapy , Mapy.cz - turistická"},{"nazev":"Datum spuštění přihlášek:","hodnota":"10.08.2025 15:02"},{"nazev":"1. termín přihlášek:","hodnota":"30.09.2025 23:59"}]},{"gps":"50.051683040569,16.071152687073","tbl":[{"nazev":"ORIS ID:","hodnota":"8839"},{"nazev":"Název:","hodnota":"Oblastní žebříček"},{"nazev":"Datum:","hodnota":"08.11.2025"},{"nazev":"Místo konání:","hodnota":"Horní Jelení, RS Tramtáryje"},{"nazev":"Start 00:","hodnota":"10:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"50.051683040569,16.071152687073: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"02.11.2025 23:59"},{"nazev":"Datum splatnosti:","hodnota":"05.11.2025"}]},{"gps":"50.203752569439,15.829233509617","tbl":[{"nazev":"ORIS ID:","hodnota":"9503"},{"nazev":"Název:","hodnota":"Metodický seminář trenérů a rozhodčích"},{"nazev":"Datum:","hodnota":"22.11.2025"},{"nazev":"Místo konání:","hodnota":"Hradec Králové - univerzitní kampus"},{"nazev":"Start 00:","hodnota":"09:00"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"50.203752569439,15.829233509617: Google mapy , Mapy.cz - turistická"},{"nazev":"1. termín přihlášek:","hodnota":"09.11.2025 23:59"}]},{"gps":"50.032017959718,15.41620016098","tbl":[{"nazev":"ORIS ID:","hodnota":"9453"},{"nazev":"Název:","hodnota":"Seminář: sprintové mapy pro mapaře a pořadatele"},{"nazev":"Datum:","hodnota":"05.12.2025"},{"nazev":"Místo konání:","hodnota":"Chvaletice"},{"nazev":"Sport:","hodnota":"OB"},{"nazev":"Souřadnice:","hodnota":"50.032017959718,15.41620016098: Google mapy , Mapy.cz - turistická"}]}];
   </script>
   <!--DATA:END-->
 
   <script>
-    // ---------- Date helpers ----------
+    // ---------- Helpers ----------
     const MS_PER_DAY = 86400000;
 
-    // Parse "04.10.2025" or "2025-10-04" -> Date at local midnight
+    // Parse "04.10.2025" or "2025-10-04" -> Date (local midnight)
     function parseDMY(s){
       if (!s) return null;
       const iso = /^\d{4}-\d{2}-\d{2}$/;
@@ -80,36 +77,27 @@
       const d = +m[1], mo = +m[2] - 1, y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
       return new Date(y, mo, d);
     }
-
     const fmtDate = (d) => d ? d.toLocaleDateString(undefined, {year:'numeric', month:'2-digit', day:'2-digit'}) : "";
 
-    // UTC day number (stable, timezone-agnostic):
-    // number of whole days since Unix epoch at 00:00:00 UTC
-    const toDayNumUTC = (d) =>
-      d ? Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / MS_PER_DAY) : NaN;
-
-    // Convert a UTC day number back to a *local* Date (at local midnight) for labels
+    // Use a timezone-agnostic day number for comparisons (UTC day index)
+    const toDayNumUTC = (d) => d ? Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / MS_PER_DAY) : NaN;
+    // Convert day number back to a *local* Date for labels
     const dayNumToLocalDate = (n) => {
-      const du = new Date(n * MS_PER_DAY); // UTC midnight of that day
-      // build a local Date from the UTC Y-M-D parts (gets you local midnight of the same calendar day)
+      const du = new Date(n * MS_PER_DAY);
       return new Date(du.getUTCFullYear(), du.getUTCMonth(), du.getUTCDate());
     };
 
-    // ---------- Fixed "next 7 days" window (computed once) ----------
-    const now = new Date();
-    const next7StartNum = toDayNumUTC(now);
-    const next7EndNum   = next7StartNum + 6; // inclusive
+    function dotIcon(){ return L.divIcon({ className:'race-pin', iconSize:[14,14] }); }
 
-    // ---------- UI refs ----------
-    const statusEl = document.getElementById('status');
-    const listEl   = document.getElementById('list');
-    const startLabel = document.getElementById('startLabel');
-    const endLabel   = document.getElementById('endLabel');
-    const fixedWindow = document.getElementById('fixedWindow');
-    const totalCountEl = document.getElementById('totalCount');
-    const visibleCountEl = document.getElementById('visibleCount');
+    // ---------- Map ----------
+    const map = L.map('map');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+    map.setView([49.8, 15.5], 7);
+    const layerGroup = L.layerGroup().addTo(map);
 
-    // ---------- Build records ----------
+    // ---------- Data ingest ----------
     let allRecords = [];
 
     function getField(tbl, label){
@@ -118,78 +106,92 @@
       return found ? (found.hodnota || '') : '';
     }
 
-    function buildRecords(rows){
-      const recs = [];
-      for (const row of rows){
-        const name  = getField(row.tbl, 'Název');
-        const place = getField(row.tbl, 'Místo konání');
-        const date  = parseDMY(getField(row.tbl, 'Datum'));
-        const orisId = getField(row.tbl, 'ORIS ID');
-        const link = orisId ? `https://oris.orientacnisporty.cz/Zavod?id=${encodeURIComponent(orisId)}` : '';
-
-        const rec = {
-          name, place, date, link,
-          dateNum: toDayNumUTC(date),
-          rawTable: row.tbl
-        };
-        recs.push(rec);
-      }
-
-      // Sort by date (unknown last)
-      recs.sort((a,b)=>{
-        if (!a.date && !b.date) return 0;
-        if (!a.date) return 1;
-        if (!b.date) return -1;
-        return a.date - b.date;
-      });
-
-      return recs;
+    function buildPopupHTML(r){
+      const safe = (x) => String(x ?? '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const rows = (r.rawTable || []).map(({nazev, hodnota}) =>
+        `<tr><th>${safe((nazev||'').replace(/:$/,''))}</th><td>${safe(hodnota||'')}</td></tr>`
+      ).join('');
+      const title = safe(r.name || '(bez názvu)');
+      const place = safe(r.place || '');
+      const date = r.date ? fmtDate(r.date) : '';
+      const link = r.link ? `<a class="popup-link" href="${r.link}" target="_blank" rel="noopener">Otevřít v ORIS</a>` : '';
+      return `
+        <div class="popup-wrap">
+          <div class="popup-title">${title}</div>
+          <div class="popup-sub">${[place, date].filter(Boolean).join(' • ')}</div>
+          <table class="popup-table">${rows}</table>
+          ${link}
+        </div>`;
     }
 
-    // ---------- Render list ----------
-    function renderList(records){
-      listEl.innerHTML = '';
-      if (!records.length){
-        listEl.innerHTML = `<div class="empty">No events in the selected window.</div>`;
-        return;
-      }
-      const fr = document.createDocumentFragment();
-      for (const r of records){
-        const div = document.createElement('div');
-        div.className = 'card';
-        div.innerHTML = `
-          <div class="title">${escapeHTML(r.name || '(bez názvu)')}</div>
-          <div class="sub">${[escapeHTML(r.place||''), r.date ? fmtDate(r.date) : ''].filter(Boolean).join(' • ')}</div>
-          <div class="meta">
-            <div class="meta-row"><div>Local date</div><div>${r.date ? fmtDate(r.date) : '—'}</div></div>
-            <div class="meta-row"><div>UTC day #</div><div>${Number.isFinite(r.dateNum) ? r.dateNum : '—'}</div></div>
-            ${r.link ? `<div><a class="link" href="${r.link}" target="_blank" rel="noopener">Otevřít v ORIS</a></div>` : ''}
-          </div>
-        `;
-        fr.appendChild(div);
-      }
-      listEl.appendChild(fr);
+    function makeMarker(r){
+      const m = L.marker([r.lat, r.lon], { icon: dotIcon() });
+      m.bindPopup(buildPopupHTML(r));
+      return m;
     }
 
-    function escapeHTML(x){ return String(x ?? '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+    // Build records from ORIS_DATA
+    (function(){
+      const status = document.getElementById('status');
+      try {
+        const rows = Array.isArray(window.ORIS_DATA) ? window.ORIS_DATA : [];
+        const recs = [];
 
-    // ---------- Filtering ----------
-    function refreshList(sliderA, sliderB){
-      // Intersection of slider range with fixed next-7 window
-      const a = Math.max(sliderA, next7StartNum);
-      const b = Math.min(sliderB, next7EndNum);
+        for (const row of rows){
+          // Coordinates from 'gps' or from 'Souřadnice'
+          let lat = NaN, lon = NaN;
+          const gpsRaw = row.gps || getField(row.tbl, 'Souřadnice');
+          if (gpsRaw){
+            const m = String(gpsRaw).match(/(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)/);
+            if (m){ lat = parseFloat(m[1]); lon = parseFloat(m[2]); }
+          }
+          if (isNaN(lat) || isNaN(lon)) continue;
 
-      let visible = [];
-      if (a <= b){
-        visible = allRecords.filter(r => Number.isFinite(r.dateNum) && r.dateNum >= a && r.dateNum <= b);
+          const name   = getField(row.tbl, 'Název');
+          const place  = getField(row.tbl, 'Místo konání');
+          const date   = parseDMY(getField(row.tbl, 'Datum'));
+          const orisId = getField(row.tbl, 'ORIS ID');
+          const link   = orisId ? `https://oris.orientacnisporty.cz/Zavod?id=${encodeURIComponent(orisId)}` : '';
+
+          const record = {
+            name, place, date, link,
+            dateNum: toDayNumUTC(date),
+            lat, lon,
+            rawTable: row.tbl
+          };
+          record.marker = makeMarker(record);
+          recs.push(record);
+        }
+
+        // Sort by date (unknown last)
+        recs.sort((a,b)=>{
+          if (!a.date && !b.date) return 0;
+          if (!a.date) return 1;
+          if (!b.date) return -1;
+          return a.date - b.date;
+        });
+
+        allRecords = recs;
+        document.getElementById('totalCount').textContent = allRecords.length;
+
+        if (!allRecords.length){
+          status.textContent = 'No valid records.';
+          return;
+        }
+
+        initSliderAndRender();
+      } catch (e){
+        console.error(e);
+        status.textContent = 'Error';
       }
+    })();
 
-      visibleCountEl.textContent = visible.length;
-      renderList(visible);
-    }
+    // ---------- Slider + filtering (ALL races) ----------
+    function initSliderAndRender(){
+      const dated = allRecords.filter(r => Number.isFinite(r.dateNum));
+      const minNum = dated.length ? Math.min(...dated.map(r => r.dateNum)) : toDayNumUTC(new Date());
+      const maxNum = dated.length ? Math.max(...dated.map(r => r.dateNum)) : minNum;
 
-    // ---------- Slider (noUiSlider) ----------
-    function initSlider(minNum, maxNum){
       const slider = document.getElementById('slider');
       noUiSlider.create(slider, {
         start: [minNum, maxNum],
@@ -199,47 +201,38 @@
         behaviour: 'tap-drag'
       });
 
-      slider.noUiSlider.on('update', (vals) => {
-        const a = Math.round(+vals[0]);
-        const b = Math.round(+vals[1]);
-        startLabel.textContent = fmtDate(dayNumToLocalDate(Math.min(a,b)));
-        endLabel.textContent   = fmtDate(dayNumToLocalDate(Math.max(a,b)));
-        refreshList(Math.min(a,b), Math.max(a,b));
-      });
+      const st = document.getElementById('startLabel');
+      const en = document.getElementById('endLabel');
 
-      // Initial paint
-      const [a0, b0] = slider.noUiSlider.get().map(v => Math.round(+v));
-      startLabel.textContent = fmtDate(dayNumToLocalDate(Math.min(a0,b0)));
-      endLabel.textContent   = fmtDate(dayNumToLocalDate(Math.max(a0,b0)));
-      refreshList(Math.min(a0,b0), Math.max(a0,b0));
-    }
+      const update = () => {
+        const [a0, b0] = slider.noUiSlider.get().map(v => Math.round(+v));
+        const a = Math.min(a0, b0), b = Math.max(a0, b0);
 
-    // ---------- Init ----------
-    (function(){
-      try {
-        const rows = Array.isArray(window.ORIS_DATA) ? window.ORIS_DATA : [];
-        allRecords = buildRecords(rows);
-        totalCountEl.textContent = allRecords.length;
+        st.textContent = fmtDate(dayNumToLocalDate(a));
+        en.textContent = fmtDate(dayNumToLocalDate(b));
 
-        const fixedLabel = `${fmtDate(dayNumToLocalDate(next7StartNum))} – ${fmtDate(dayNumToLocalDate(next7EndNum))}`;
-        fixedWindow.textContent = fixedLabel;
-        statusEl.textContent = `Filtering to: ${fixedLabel}`;
+        layerGroup.clearLayers();
+        let shown = 0;
+        const bounds = L.latLngBounds();
 
-        if (!allRecords.length){
-          renderList([]);
-          return;
+        for (const r of allRecords){
+          if (Number.isFinite(r.dateNum) && r.dateNum >= a && r.dateNum <= b){
+            r.marker.addTo(layerGroup);
+            bounds.extend([r.lat, r.lon]);
+            shown++;
+          }
         }
 
-        const dated = allRecords.filter(r => Number.isFinite(r.dateNum));
-        const minNum = dated.length ? Math.min(...dated.map(r => r.dateNum)) : next7StartNum;
-        const maxNum = dated.length ? Math.max(...dated.map(r => r.dateNum)) : next7StartNum;
+        document.getElementById('visibleCount').textContent = shown;
+        if (shown > 0 && bounds.isValid()){
+          map.fitBounds(bounds.pad(0.15));
+        }
+        document.getElementById('status').textContent = `Showing: ${fmtDate(dayNumToLocalDate(a))} – ${fmtDate(dayNumToLocalDate(b))}`;
+      };
 
-        initSlider(minNum, maxNum);
-      } catch (e){
-        console.error(e);
-        statusEl.textContent = 'Error';
-      }
-    })();
+      slider.noUiSlider.on('update', update);
+      update(); // initial paint
+    }
   </script>
 </body>
 </html>
