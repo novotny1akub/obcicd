@@ -3,39 +3,40 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Orienteering Races – Minimal View</title>
+  <title>Orienteering Races Map</title>
 
-  <!-- noUiSlider (original slider) -->
+  <!-- Leaflet -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+  <!-- noUiSlider -->
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nouislider@15.7.0/dist/nouislider.min.css" />
   <script src="https://cdn.jsdelivr.net/npm/nouislider@15.7.0/dist/nouislider.min.js"></script>
 
   <style>
-    :root {
-      --bg:#0b0d10; --panel:#14171c; --muted:#9aa4b2; --text:#e6edf3; --accent:#4aa3ff; --card:#0f1318; --border:#263042;
-    }
-    html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+    :root { --bg:#0b0d10; --panel:#14171c; --muted:#9aa4b2; --text:#e6edf3; --accent:#4aa3ff; }
+    html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui, sans-serif; }
     .app { display:grid; grid-template-rows:auto 1fr; height:100%; }
-    .controls { display:flex; gap:1rem; align-items:center; padding:.75rem 1rem; background:var(--panel); border-bottom:1px solid var(--border); }
+    .controls { display:flex; gap:1rem; align-items:center; padding:.75rem 1rem; background:var(--panel); }
     .controls h1 { font-size:1rem; margin:0; font-weight:600; }
-    .pill { background:rgba(74,163,255,.12); color:var(--accent); padding:.25rem .5rem; border-radius:999px; font-size:.8rem; white-space:nowrap; }
-    .count { white-space:nowrap; }
-
-    .slider-wrap { flex:1 1 auto; min-width:240px; }
+    .slider-wrap { flex:1 1 auto; min-width:260px; }
     #slider { margin:.35rem 0 .25rem; }
     .date-labels { display:flex; justify-content:space-between; font-size:.85rem; color:var(--muted); }
-    .fixed-note { font-size:.85rem; color:var(--muted); margin-left:.25rem; }
+    .pill { background:rgba(74,163,255,.12); color:var(--accent); padding:.25rem .5rem; border-radius:999px; font-size:.8rem; white-space:nowrap; }
+    .count { white-space:nowrap; }
+    #map { height:calc(100vh - 64px); width:100%; }
 
-    .list { padding:1rem; display:grid; gap:.75rem; overflow:auto; }
-    .card {
-      background:var(--card); border:1px solid var(--border); border-radius:12px; padding:.8rem .9rem;
-      display:grid; gap:.4rem;
-    }
-    .title { font-weight:600; }
-    .sub { color:var(--muted); font-size:.92rem; }
-    .meta { display:grid; gap:.25rem; font-size:.9rem; }
-    .meta-row { display:grid; grid-template-columns:110px 1fr; gap:.5rem; }
-    .link { color:var(--accent); text-decoration:underline; }
-    .empty { color:var(--muted); padding:2rem 0; text-align:center; }
+    /* Marker style */
+    .race-pin { width:14px; height:14px; border-radius:50%; background:#4aa3ff; border:2px solid #e6edf3; }
+
+    /* Popup styling */
+    .popup-wrap { min-width:260px; }
+    .popup-title { font-weight:600; margin:0 0 .25rem 0; }
+    .popup-sub { color:var(--muted); margin:0 0 .5rem 0; font-size:.9rem; }
+    .popup-table { width:100%; border-collapse:collapse; font-size:.9rem; }
+    .popup-table th, .popup-table td { text-align:left; padding:.2rem .25rem; vertical-align:top; }
+    .popup-table th { color:var(--muted); font-weight:500; white-space:nowrap; }
+    .popup-link { display:inline-block; margin-top:.5rem; color:var(--accent); text-decoration:underline; }
   </style>
 </head>
 <body>
@@ -43,34 +44,30 @@
     <div class="controls">
       <h1>Orienteering Races</h1>
       <span class="pill" id="status">Loading…</span>
-
       <div class="slider-wrap">
         <div id="slider"></div>
         <div class="date-labels">
           <span><strong>From</strong> <span id="startLabel">—</span></span>
-          <span class="fixed-note">Intersecting with <span id="fixedWindow">—</span></span>
           <span><strong>To</strong> <span id="endLabel">—</span></span>
         </div>
       </div>
-
       <div class="count"><span id="visibleCount">0</span>/<span id="totalCount">0</span></div>
     </div>
-
-    <div id="list" class="list"></div>
+    <div id="map"></div>
   </div>
 
   <!--DATA:START-->
   <script>
-    // Replaced by GitHub Actions workflow
+    // Replaced by your pipeline
     window.ORIS_DATA = __ORIS_DATA__;
   </script>
   <!--DATA:END-->
 
   <script>
-    // ---------- Date helpers ----------
+    // ---------- Helpers ----------
     const MS_PER_DAY = 86400000;
 
-    // Parse "04.10.2025" or "2025-10-04" -> Date at local midnight
+    // Parse "04.10.2025" or "2025-10-04" -> Date (local midnight)
     function parseDMY(s){
       if (!s) return null;
       const iso = /^\d{4}-\d{2}-\d{2}$/;
@@ -80,36 +77,27 @@
       const d = +m[1], mo = +m[2] - 1, y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
       return new Date(y, mo, d);
     }
-
     const fmtDate = (d) => d ? d.toLocaleDateString(undefined, {year:'numeric', month:'2-digit', day:'2-digit'}) : "";
 
-    // UTC day number (stable, timezone-agnostic):
-    // number of whole days since Unix epoch at 00:00:00 UTC
-    const toDayNumUTC = (d) =>
-      d ? Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / MS_PER_DAY) : NaN;
-
-    // Convert a UTC day number back to a *local* Date (at local midnight) for labels
+    // Use a timezone-agnostic day number for comparisons (UTC day index)
+    const toDayNumUTC = (d) => d ? Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / MS_PER_DAY) : NaN;
+    // Convert day number back to a *local* Date for labels
     const dayNumToLocalDate = (n) => {
-      const du = new Date(n * MS_PER_DAY); // UTC midnight of that day
-      // build a local Date from the UTC Y-M-D parts (gets you local midnight of the same calendar day)
+      const du = new Date(n * MS_PER_DAY);
       return new Date(du.getUTCFullYear(), du.getUTCMonth(), du.getUTCDate());
     };
 
-    // ---------- Fixed "next 7 days" window (computed once) ----------
-    const now = new Date();
-    const next7StartNum = toDayNumUTC(now);
-    const next7EndNum   = next7StartNum + 6; // inclusive
+    function dotIcon(){ return L.divIcon({ className:'race-pin', iconSize:[14,14] }); }
 
-    // ---------- UI refs ----------
-    const statusEl = document.getElementById('status');
-    const listEl   = document.getElementById('list');
-    const startLabel = document.getElementById('startLabel');
-    const endLabel   = document.getElementById('endLabel');
-    const fixedWindow = document.getElementById('fixedWindow');
-    const totalCountEl = document.getElementById('totalCount');
-    const visibleCountEl = document.getElementById('visibleCount');
+    // ---------- Map ----------
+    const map = L.map('map');
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors'
+    }).addTo(map);
+    map.setView([49.8, 15.5], 7);
+    const layerGroup = L.layerGroup().addTo(map);
 
-    // ---------- Build records ----------
+    // ---------- Data ingest ----------
     let allRecords = [];
 
     function getField(tbl, label){
@@ -118,78 +106,92 @@
       return found ? (found.hodnota || '') : '';
     }
 
-    function buildRecords(rows){
-      const recs = [];
-      for (const row of rows){
-        const name  = getField(row.tbl, 'Název');
-        const place = getField(row.tbl, 'Místo konání');
-        const date  = parseDMY(getField(row.tbl, 'Datum'));
-        const orisId = getField(row.tbl, 'ORIS ID');
-        const link = orisId ? `https://oris.orientacnisporty.cz/Zavod?id=${encodeURIComponent(orisId)}` : '';
-
-        const rec = {
-          name, place, date, link,
-          dateNum: toDayNumUTC(date),
-          rawTable: row.tbl
-        };
-        recs.push(rec);
-      }
-
-      // Sort by date (unknown last)
-      recs.sort((a,b)=>{
-        if (!a.date && !b.date) return 0;
-        if (!a.date) return 1;
-        if (!b.date) return -1;
-        return a.date - b.date;
-      });
-
-      return recs;
+    function buildPopupHTML(r){
+      const safe = (x) => String(x ?? '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const rows = (r.rawTable || []).map(({nazev, hodnota}) =>
+        `<tr><th>${safe((nazev||'').replace(/:$/,''))}</th><td>${safe(hodnota||'')}</td></tr>`
+      ).join('');
+      const title = safe(r.name || '(bez názvu)');
+      const place = safe(r.place || '');
+      const date = r.date ? fmtDate(r.date) : '';
+      const link = r.link ? `<a class="popup-link" href="${r.link}" target="_blank" rel="noopener">Otevřít v ORIS</a>` : '';
+      return `
+        <div class="popup-wrap">
+          <div class="popup-title">${title}</div>
+          <div class="popup-sub">${[place, date].filter(Boolean).join(' • ')}</div>
+          <table class="popup-table">${rows}</table>
+          ${link}
+        </div>`;
     }
 
-    // ---------- Render list ----------
-    function renderList(records){
-      listEl.innerHTML = '';
-      if (!records.length){
-        listEl.innerHTML = `<div class="empty">No events in the selected window.</div>`;
-        return;
-      }
-      const fr = document.createDocumentFragment();
-      for (const r of records){
-        const div = document.createElement('div');
-        div.className = 'card';
-        div.innerHTML = `
-          <div class="title">${escapeHTML(r.name || '(bez názvu)')}</div>
-          <div class="sub">${[escapeHTML(r.place||''), r.date ? fmtDate(r.date) : ''].filter(Boolean).join(' • ')}</div>
-          <div class="meta">
-            <div class="meta-row"><div>Local date</div><div>${r.date ? fmtDate(r.date) : '—'}</div></div>
-            <div class="meta-row"><div>UTC day #</div><div>${Number.isFinite(r.dateNum) ? r.dateNum : '—'}</div></div>
-            ${r.link ? `<div><a class="link" href="${r.link}" target="_blank" rel="noopener">Otevřít v ORIS</a></div>` : ''}
-          </div>
-        `;
-        fr.appendChild(div);
-      }
-      listEl.appendChild(fr);
+    function makeMarker(r){
+      const m = L.marker([r.lat, r.lon], { icon: dotIcon() });
+      m.bindPopup(buildPopupHTML(r));
+      return m;
     }
 
-    function escapeHTML(x){ return String(x ?? '').replace(/[<>&]/g, c => ({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); }
+    // Build records from ORIS_DATA
+    (function(){
+      const status = document.getElementById('status');
+      try {
+        const rows = Array.isArray(window.ORIS_DATA) ? window.ORIS_DATA : [];
+        const recs = [];
 
-    // ---------- Filtering ----------
-    function refreshList(sliderA, sliderB){
-      // Intersection of slider range with fixed next-7 window
-      const a = Math.max(sliderA, next7StartNum);
-      const b = Math.min(sliderB, next7EndNum);
+        for (const row of rows){
+          // Coordinates from 'gps' or from 'Souřadnice'
+          let lat = NaN, lon = NaN;
+          const gpsRaw = row.gps || getField(row.tbl, 'Souřadnice');
+          if (gpsRaw){
+            const m = String(gpsRaw).match(/(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)/);
+            if (m){ lat = parseFloat(m[1]); lon = parseFloat(m[2]); }
+          }
+          if (isNaN(lat) || isNaN(lon)) continue;
 
-      let visible = [];
-      if (a <= b){
-        visible = allRecords.filter(r => Number.isFinite(r.dateNum) && r.dateNum >= a && r.dateNum <= b);
+          const name   = getField(row.tbl, 'Název');
+          const place  = getField(row.tbl, 'Místo konání');
+          const date   = parseDMY(getField(row.tbl, 'Datum'));
+          const orisId = getField(row.tbl, 'ORIS ID');
+          const link   = orisId ? `https://oris.orientacnisporty.cz/Zavod?id=${encodeURIComponent(orisId)}` : '';
+
+          const record = {
+            name, place, date, link,
+            dateNum: toDayNumUTC(date),
+            lat, lon,
+            rawTable: row.tbl
+          };
+          record.marker = makeMarker(record);
+          recs.push(record);
+        }
+
+        // Sort by date (unknown last)
+        recs.sort((a,b)=>{
+          if (!a.date && !b.date) return 0;
+          if (!a.date) return 1;
+          if (!b.date) return -1;
+          return a.date - b.date;
+        });
+
+        allRecords = recs;
+        document.getElementById('totalCount').textContent = allRecords.length;
+
+        if (!allRecords.length){
+          status.textContent = 'No valid records.';
+          return;
+        }
+
+        initSliderAndRender();
+      } catch (e){
+        console.error(e);
+        status.textContent = 'Error';
       }
+    })();
 
-      visibleCountEl.textContent = visible.length;
-      renderList(visible);
-    }
+    // ---------- Slider + filtering (ALL races) ----------
+    function initSliderAndRender(){
+      const dated = allRecords.filter(r => Number.isFinite(r.dateNum));
+      const minNum = dated.length ? Math.min(...dated.map(r => r.dateNum)) : toDayNumUTC(new Date());
+      const maxNum = dated.length ? Math.max(...dated.map(r => r.dateNum)) : minNum;
 
-    // ---------- Slider (noUiSlider) ----------
-    function initSlider(minNum, maxNum){
       const slider = document.getElementById('slider');
       noUiSlider.create(slider, {
         start: [minNum, maxNum],
@@ -199,47 +201,38 @@
         behaviour: 'tap-drag'
       });
 
-      slider.noUiSlider.on('update', (vals) => {
-        const a = Math.round(+vals[0]);
-        const b = Math.round(+vals[1]);
-        startLabel.textContent = fmtDate(dayNumToLocalDate(Math.min(a,b)));
-        endLabel.textContent   = fmtDate(dayNumToLocalDate(Math.max(a,b)));
-        refreshList(Math.min(a,b), Math.max(a,b));
-      });
+      const st = document.getElementById('startLabel');
+      const en = document.getElementById('endLabel');
 
-      // Initial paint
-      const [a0, b0] = slider.noUiSlider.get().map(v => Math.round(+v));
-      startLabel.textContent = fmtDate(dayNumToLocalDate(Math.min(a0,b0)));
-      endLabel.textContent   = fmtDate(dayNumToLocalDate(Math.max(a0,b0)));
-      refreshList(Math.min(a0,b0), Math.max(a0,b0));
-    }
+      const update = () => {
+        const [a0, b0] = slider.noUiSlider.get().map(v => Math.round(+v));
+        const a = Math.min(a0, b0), b = Math.max(a0, b0);
 
-    // ---------- Init ----------
-    (function(){
-      try {
-        const rows = Array.isArray(window.ORIS_DATA) ? window.ORIS_DATA : [];
-        allRecords = buildRecords(rows);
-        totalCountEl.textContent = allRecords.length;
+        st.textContent = fmtDate(dayNumToLocalDate(a));
+        en.textContent = fmtDate(dayNumToLocalDate(b));
 
-        const fixedLabel = `${fmtDate(dayNumToLocalDate(next7StartNum))} – ${fmtDate(dayNumToLocalDate(next7EndNum))}`;
-        fixedWindow.textContent = fixedLabel;
-        statusEl.textContent = `Filtering to: ${fixedLabel}`;
+        layerGroup.clearLayers();
+        let shown = 0;
+        const bounds = L.latLngBounds();
 
-        if (!allRecords.length){
-          renderList([]);
-          return;
+        for (const r of allRecords){
+          if (Number.isFinite(r.dateNum) && r.dateNum >= a && r.dateNum <= b){
+            r.marker.addTo(layerGroup);
+            bounds.extend([r.lat, r.lon]);
+            shown++;
+          }
         }
 
-        const dated = allRecords.filter(r => Number.isFinite(r.dateNum));
-        const minNum = dated.length ? Math.min(...dated.map(r => r.dateNum)) : next7StartNum;
-        const maxNum = dated.length ? Math.max(...dated.map(r => r.dateNum)) : next7StartNum;
+        document.getElementById('visibleCount').textContent = shown;
+        if (shown > 0 && bounds.isValid()){
+          map.fitBounds(bounds.pad(0.15));
+        }
+        document.getElementById('status').textContent = `Showing: ${fmtDate(dayNumToLocalDate(a))} – ${fmtDate(dayNumToLocalDate(b))}`;
+      };
 
-        initSlider(minNum, maxNum);
-      } catch (e){
-        console.error(e);
-        statusEl.textContent = 'Error';
-      }
-    })();
+      slider.noUiSlider.on('update', update);
+      update(); // initial paint
+    }
   </script>
 </body>
 </html>
