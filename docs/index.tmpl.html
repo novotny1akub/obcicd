@@ -68,14 +68,17 @@
     const parseDMY = (s) => {
       if (!s) return null;
       const iso = /^\d{4}-\d{2}-\d{2}$/;
-      if (iso.test(s)) return new Date(s + "T00:00:00");
+      if (iso.test(s)) return new Date(s + "T00:00:00"); // local midnight
       const m = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/);
       if (!m) return null;
       const d = parseInt(m[1], 10), mo = parseInt(m[2], 10) - 1, y = parseInt(m[3].length === 2 ? (2000 + parseInt(m[3], 10)) : m[3], 10);
-      return new Date(y, mo, d);
+      return new Date(y, mo, d); // local midnight
     };
     const fmtDate = (d) => d ? d.toLocaleDateString(undefined, {year:'numeric', month:'2-digit', day:'2-digit'}) : "";
-    const toNumberDate = (d) => d ? Math.floor(d.getTime() / 86400000) : NaN;
+
+    // Local-midnight millisecond index (no UTC math anywhere)
+    const toLocalMidnightMs = (d) => d ? new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() : NaN;
+
     function dotIcon(){ return L.divIcon({ className: 'race-pin', iconSize: [14,14] }); }
 
     // ---- Map init ----
@@ -113,24 +116,23 @@
       return m;
     }
 
-    // ---- Fixed "next 7 days" window (computed once) ----
-    const today = new Date();
-    today.setHours(0,0,0,0);
-    const next7StartNum = toNumberDate(today);
-    const next7EndNum   = next7StartNum + 6; // inclusive
+    // ---- Fixed "next 7 days" window (computed once, LOCAL-midnight based) ----
+    const _today = new Date();
+    const next7StartMs = toLocalMidnightMs(_today);
+    const next7EndMs   = next7StartMs + 6 * 86400000; // inclusive range in days
 
     // Only show markers that are BOTH within the slider range AND within the next 7 days
-    function refreshMap(sliderA, sliderB){
+    function refreshMap(sliderAms, sliderBms){
       // Effective intersection
-      const a = Math.max(sliderA, next7StartNum);
-      const b = Math.min(sliderB, next7EndNum);
+      const a = Math.max(sliderAms, next7StartMs);
+      const b = Math.min(sliderBms, next7EndMs);
 
       layerGroup.clearLayers();
       let c = 0;
 
       if (a <= b) {
         for (const r of allRecords){
-          if (Number.isFinite(r.dateNum) && r.dateNum >= a && r.dateNum <= b){
+          if (Number.isFinite(r.dateMs) && r.dateMs >= a && r.dateMs <= b){
             r.marker.addTo(layerGroup);
             c++;
           }
@@ -139,15 +141,21 @@
       document.getElementById('visibleCount').textContent = c;
     }
 
-    function initSlider(minNum,maxNum){
+    function initSlider(minMs,maxMs){
       const s = document.getElementById('slider');
-      noUiSlider.create(s,{start:[minNum,maxNum],connect:true,step:1,range:{min:minNum,max:maxNum}});
+      noUiSlider.create(s,{
+        start:[minMs,maxMs],
+        connect:true,
+        step:86400000, // 1 day in ms
+        range:{min:minMs,max:maxMs}
+      });
       const st=document.getElementById('startLabel');
       const en=document.getElementById('endLabel');
       s.noUiSlider.on('update',(v)=>{
+        // noUiSlider gives strings; coerce to numbers
         const [a,b]=v.map(x=>Math.round(+x));
-        st.textContent=fmtDate(new Date(a*86400000));
-        en.textContent=fmtDate(new Date(b*86400000));
+        st.textContent=fmtDate(new Date(a));
+        en.textContent=fmtDate(new Date(b));
         refreshMap(a,b);
       });
       const [a0,b0]=s.noUiSlider.get().map(v=>Math.round(+v));
@@ -174,8 +182,7 @@
         };
 
         for (const row of rows){
-          // --- Location (prefer top-level gps, fallback to "Souřadnice") ---
-          // UPDATED: take coords directly when present
+          // Location from "gps" (fallback to first coordinate in "Souřadnice")
           let lat = NaN, lon = NaN;
           const gpsRaw = row.gps || getField(row.tbl, 'Souřadnice');
           if (gpsRaw){
@@ -183,23 +190,19 @@
             if (m){ lat = parseFloat(m[1]); lon = parseFloat(m[2]); }
           }
 
-          // --- Core fields ---
-          const name   = getField(row.tbl, 'Název');
-          const place  = getField(row.tbl, 'Místo konání');
-
-          // UPDATED: prefer top-level date, fallback to table "Datum"
-          const date   = parseDMY(row.date) || parseDMY(getField(row.tbl, 'Datum'));
-
-          // UPDATED: prefer top-level URL; fallback to ORIS ID only if needed
+          // Core fields from the table
+          const name  = getField(row.tbl, 'Název');
+          const place = getField(row.tbl, 'Místo konání');
+          const date  = parseDMY(getField(row.tbl, 'Datum'));
           const orisId = getField(row.tbl, 'ORIS ID');
-          const link   = row.url || (orisId ? `https://oris.orientacnisporty.cz/Zavod?id=${encodeURIComponent(orisId)}` : '');
+          const link = orisId ? `https://oris.orientacnisporty.cz/Zavod?id=${encodeURIComponent(orisId)}` : '';
 
           // Skip if no valid coordinates
           if (isNaN(lat) || isNaN(lon)) continue;
 
           const rec = {
             date,
-            dateNum: toNumberDate(date),
+            dateMs: toLocalMidnightMs(date), // <-- local-midnight ms index
             name, place, link, lat, lon,
             rawTable: row.tbl
           };
@@ -223,17 +226,16 @@
           return;
         }
 
-        // Slider bounds: full data range
-        const dated = allRecords.filter(r=>Number.isFinite(r.dateNum));
-        const todayNum = next7StartNum; // already normalized to midnight
-        const minNum = dated.length ? Math.min(...dated.map(r=>r.dateNum)) : todayNum;
-        const maxNum = dated.length ? Math.max(...dated.map(r=>r.dateNum)) : todayNum;
+        // Slider bounds: full data range using LOCAL-midnight ms
+        const dated = allRecords.filter(r=>Number.isFinite(r.dateMs));
+        const minMs = dated.length ? Math.min(...dated.map(r=>r.dateMs)) : next7StartMs;
+        const maxMs = dated.length ? Math.max(...dated.map(r=>r.dateMs)) : next7StartMs;
 
         // Status: fixed next-7-days window (independent of slider)
-        const next7Label = `${fmtDate(new Date(next7StartNum*86400000))} – ${fmtDate(new Date(next7EndNum*86400000))}`;
+        const next7Label = `${fmtDate(new Date(next7StartMs))} – ${fmtDate(new Date(next7EndMs))}`;
         status.textContent = `Filtering to: ${next7Label}`;
 
-        initSlider(minNum, maxNum);
+        initSlider(minMs, maxMs);
         fitToVisible();
       } catch(e){
         console.error(e);
