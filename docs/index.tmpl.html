@@ -142,7 +142,7 @@
 
     function makeMarker(r){
       const m = L.marker([r.lat, r.lon], { icon: dotIcon() });
-      m.bindPopup(buildPopupHTML(r), { direction: "left" });
+      m.bindPopup(buildPopupHTML(r), { direction: "center" });
       return m;
     }
 
