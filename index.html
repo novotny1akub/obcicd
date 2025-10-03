@@ -113,11 +113,12 @@
       return m;
     }
 
+    // Only show markers with a valid date inside the current slider window
     function refreshMap(a,b){
       layerGroup.clearLayers();
       let c = 0;
       for (const r of allRecords){
-        if (Number.isFinite(r.dateNum) ? (r.dateNum>=a && r.dateNum<=b) : true){
+        if (Number.isFinite(r.dateNum) && r.dateNum>=a && r.dateNum<=b){
           r.marker.addTo(layerGroup);
           c++;
         }
@@ -198,16 +199,20 @@
 
         allRecords = recs;
         document.getElementById('totalCount').textContent = allRecords.length;
-        if(!allRecords.length){ status.textContent='No valid records.'; return; }
-        status.textContent='Ready';
 
-        // Slider bounds: use min/max known dates; if any are missing, fall back to today
-        const dated = allRecords.filter(r=>Number.isFinite(r.dateNum));
-        const todayNum = toNumberDate(new Date());
-        const minNum = dated.length ? Math.min(...dated.map(r=>r.dateNum)) : todayNum;
-        const maxNum = dated.length ? Math.max(...dated.map(r=>r.dateNum)) : todayNum;
+        if(!allRecords.length){
+          status.textContent='No valid records.';
+          return;
+        }
 
-        initSlider(minNum, maxNum);
+        // Force the slider to the next 7 days (inclusive)
+        const today = new Date();
+        today.setHours(0,0,0,0);
+        const todayNum = toNumberDate(today);
+        const endNum = todayNum + 6; // inclusive: 7 days total
+
+        status.textContent = 'Next 7 days';
+        initSlider(todayNum, endNum);
         fitToVisible();
       } catch(e){
         console.error(e);
