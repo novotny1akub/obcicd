@@ -67,6 +67,9 @@
     // ---------- Helpers ----------
     const MS_PER_DAY = 86400000;
 
+    // Fields to hide in the popup table
+    const HIDE_FIELDS = new Set(['ORIS ID', 'Souřadnice']);
+
     // Parse "04.10.2025" or "2025-10-04" -> Date (local midnight)
     function parseDMY(s){
       if (!s) return null;
@@ -109,7 +112,7 @@
 
     // ---------- Data ingest ----------
     let allRecords = [];
-    let didAutoFitOnce = false; // <<< only auto-fit on the very first render
+    let didAutoFitOnce = false; // only auto-fit on the very first render
 
     function getField(tbl, label){
       if (!Array.isArray(tbl)) return '';
@@ -119,9 +122,11 @@
 
     function buildPopupHTML(r){
       const safe = (x) => String(x ?? '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      const rows = (r.rawTable || []).map(({nazev, hodnota}) =>
-        `<tr><th>${safe((nazev||'').replace(/:$/,''))}</th><td>${safe(hodnota||'')}</td></tr>`
-      ).join('');
+      const rows = (r.rawTable || [])
+        .filter(({ nazev }) => !HIDE_FIELDS.has(String(nazev || '').replace(/:$/,'')))
+        .map(({ nazev, hodnota }) =>
+          `<tr><th>${safe((nazev||'').replace(/:$/,''))}</th><td>${safe(hodnota||'')}</td></tr>`
+        ).join('');
       const title = safe(r.name || '(bez názvu)');
       const place = safe(r.place || '');
       const date = r.date ? fmtDate(r.date) : '';
@@ -137,7 +142,7 @@
 
     function makeMarker(r){
       const m = L.marker([r.lat, r.lon], { icon: dotIcon() });
-      m.bindPopup(buildPopupHTML(r));
+      m.bindPopup(buildPopupHTML(r), { direction: "center" });
       return m;
     }
 
