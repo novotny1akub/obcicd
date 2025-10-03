@@ -26,7 +26,18 @@
     .pill { background: rgba(74,163,255,.12); color: var(--accent); padding: .25rem .5rem; border-radius: 999px; font-size: .8rem; }
     .count { white-space: nowrap; }
     #map { height: calc(100vh - 64px); width: 100%; }
+
+    /* Marker style */
     .race-pin { width: 14px; height: 14px; border-radius: 50%; background: #4aa3ff; border: 2px solid #e6edf3; }
+
+    /* Popup styling */
+    .popup-wrap { min-width: 260px; }
+    .popup-title { font-weight: 600; margin: 0 0 .25rem 0; }
+    .popup-sub { color: var(--muted); margin: 0 0 .5rem 0; font-size: .9rem; }
+    .popup-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
+    .popup-table th, .popup-table td { text-align: left; padding: .2rem .25rem; vertical-align: top; }
+    .popup-table th { color: var(--muted); font-weight: 500; white-space: nowrap; }
+    .popup-link { display:inline-block; margin-top:.5rem; color: var(--accent); text-decoration: underline; }
   </style>
 </head>
 <body>
@@ -75,33 +86,133 @@
 
     let allRecords = [];
 
-    function buildTooltipHTML(r){ return `<div class="tip"><div>${r.name}</div></div>`; }
-    function buildPopupHTML(r){ return `<div><div>${r.name}</div><div>${r.place}</div><a href="${r.link}" target="_blank">Open in ORIS</a></div>`; }
-    function makeMarker(r){ const m=L.marker([r.lat,r.lon],{icon:dotIcon()}); m.bindTooltip(buildTooltipHTML(r)); m.bindPopup(buildPopupHTML(r)); return m; }
-    function refreshMap(a,b){ layerGroup.clearLayers(); let c=0; for(const r of allRecords){ if(r.dateNum>=a&&r.dateNum<=b){ r.marker.addTo(layerGroup); c++; } } document.getElementById('visibleCount').textContent=c; }
-    function initSlider(minNum,maxNum){ const s=document.getElementById('slider'); noUiSlider.create(s,{start:[minNum,maxNum],connect:true,step:1,range:{min:minNum,max:maxNum}}); const st=document.getElementById('startLabel'); const en=document.getElementById('endLabel'); s.noUiSlider.on('update',(v)=>{ const[a,b]=v.map(x=>Math.round(+x)); st.textContent=fmtDate(new Date(a*86400000)); en.textContent=fmtDate(new Date(b*86400000)); refreshMap(a,b); }); const[a0,b0]=s.noUiSlider.get().map(v=>Math.round(+v)); refreshMap(a0,b0); }
-    function fitToVisible(){ const b=L.latLngBounds(); layerGroup.eachLayer(l=>b.extend(l.getLatLng())); if(b.isValid()) map.fitBounds(b.pad(0.15)); }
+    // Build popup from the row's table (no tooltip used)
+    function buildPopupHTML(r){
+      const safe = (x) => String(x ?? '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+      const rows = (r.rawTable || []).map(({nazev, hodnota}) => {
+        return `<tr><th>${safe((nazev||'').replace(/:$/,''))}</th><td>${safe(hodnota||'')}</td></tr>`;
+      }).join('');
+      const title = safe(r.name || '(bez názvu)');
+      const place = safe(r.place || '');
+      const date = r.date ? fmtDate(r.date) : '';
+      const link = r.link ? `<a class="popup-link" href="${r.link}" target="_blank" rel="noopener">Otevřít v ORIS</a>` : '';
+      return `
+        <div class="popup-wrap">
+          <div class="popup-title">${title}</div>
+          <div class="popup-sub">${[place, date].filter(Boolean).join(" • ")}</div>
+          <table class="popup-table">${rows}</table>
+          ${link}
+        </div>
+      `;
+    }
 
-    // ---- Bootstrap from baked data ----
+    // Marker creation (popup only, per request)
+    function makeMarker(r){
+      const m = L.marker([r.lat, r.lon], { icon: dotIcon() });
+      m.bindPopup(buildPopupHTML(r));
+      return m;
+    }
+
+    function refreshMap(a,b){
+      layerGroup.clearLayers();
+      let c = 0;
+      for (const r of allRecords){
+        if (Number.isFinite(r.dateNum) ? (r.dateNum>=a && r.dateNum<=b) : true){
+          r.marker.addTo(layerGroup);
+          c++;
+        }
+      }
+      document.getElementById('visibleCount').textContent = c;
+    }
+
+    function initSlider(minNum,maxNum){
+      const s = document.getElementById('slider');
+      noUiSlider.create(s,{start:[minNum,maxNum],connect:true,step:1,range:{min:minNum,max:maxNum}});
+      const st=document.getElementById('startLabel');
+      const en=document.getElementById('endLabel');
+      s.noUiSlider.on('update',(v)=>{
+        const [a,b]=v.map(x=>Math.round(+x));
+        st.textContent=fmtDate(new Date(a*86400000));
+        en.textContent=fmtDate(new Date(b*86400000));
+        refreshMap(a,b);
+      });
+      const [a0,b0]=s.noUiSlider.get().map(v=>Math.round(+v));
+      refreshMap(a0,b0);
+    }
+
+    function fitToVisible(){
+      const b=L.latLngBounds();
+      layerGroup.eachLayer(l=>b.extend(l.getLatLng()));
+      if(b.isValid()) map.fitBounds(b.pad(0.15));
+    }
+
+    // ---- Transform new ORIS_DATA -> records used by the map ----
     (function(){
       const status=document.getElementById('status');
       try {
-        const rows=Array.isArray(window.ORIS_DATA)?window.ORIS_DATA:[];
-        const recs=[];
-        for(const row of rows){
-          const date=parseDMY(row.date);
-          const lat=parseFloat(row.lat), lon=parseFloat(row.lon);
-          if(!date||isNaN(lat)||isNaN(lon)) continue;
-          const rec={date,dateNum:toNumberDate(date),name:row.name||"",place:row.place||"",link:row.link||"",lat,lon};
-          rec.marker=makeMarker(rec); recs.push(rec);
+        const rows = Array.isArray(window.ORIS_DATA) ? window.ORIS_DATA : [];
+        const recs = [];
+
+        const getField = (tbl, label) => {
+          if (!Array.isArray(tbl)) return '';
+          const found = tbl.find(x => (x?.nazev || '').replace(/:$/,'') === label.replace(/:$/,''));
+          return found ? (found.hodnota || '') : '';
+        };
+
+        for (const row of rows){
+          // Location from "gps" (fallback to first coordinate in "Souřadnice")
+          let lat = NaN, lon = NaN;
+          const gpsRaw = row.gps || getField(row.tbl, 'Souřadnice');
+          if (gpsRaw){
+            const m = String(gpsRaw).match(/(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)/);
+            if (m){ lat = parseFloat(m[1]); lon = parseFloat(m[2]); }
+          }
+
+          // Core fields from the table
+          const name  = getField(row.tbl, 'Název');
+          const place = getField(row.tbl, 'Místo konání');
+          const date  = parseDMY(getField(row.tbl, 'Datum'));
+          const orisId = getField(row.tbl, 'ORIS ID');
+          const link = orisId ? `https://oris.orientacnisporty.cz/Zavod?id=${encodeURIComponent(orisId)}` : '';
+
+          // Skip if no valid coordinates
+          if (isNaN(lat) || isNaN(lon)) continue;
+
+          const rec = {
+            date,
+            dateNum: toNumberDate(date),
+            name, place, link, lat, lon,
+            rawTable: row.tbl
+          };
+          rec.marker = makeMarker(rec);
+          recs.push(rec);
         }
-        allRecords=recs.sort((a,b)=>a.date-b.date);
-        document.getElementById('totalCount').textContent=allRecords.length;
-        status.textContent='Ready';
+
+        // Sort by date (unknown dates last)
+        recs.sort((a,b)=>{
+          if (!a.date && !b.date) return 0;
+          if (!a.date) return 1;
+          if (!b.date) return -1;
+          return a.date - b.date;
+        });
+
+        allRecords = recs;
+        document.getElementById('totalCount').textContent = allRecords.length;
         if(!allRecords.length){ status.textContent='No valid records.'; return; }
-        const minNum=allRecords[0].dateNum, maxNum=allRecords[allRecords.length-1].dateNum;
-        initSlider(minNum,maxNum); fitToVisible();
-      } catch(e){ console.error(e); status.textContent='Error'; }
+        status.textContent='Ready';
+
+        // Slider bounds: use min/max known dates; if any are missing, fall back to today
+        const dated = allRecords.filter(r=>Number.isFinite(r.dateNum));
+        const todayNum = toNumberDate(new Date());
+        const minNum = dated.length ? Math.min(...dated.map(r=>r.dateNum)) : todayNum;
+        const maxNum = dated.length ? Math.max(...dated.map(r=>r.dateNum)) : todayNum;
+
+        initSlider(minNum, maxNum);
+        fitToVisible();
+      } catch(e){
+        console.error(e);
+        status.textContent='Error';
+      }
     })();
   </script>
 </body>
