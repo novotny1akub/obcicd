@@ -90,15 +90,26 @@
     function dotIcon(){ return L.divIcon({ className:'race-pin', iconSize:[14,14] }); }
 
     // ---------- Map ----------
-    const map = L.map('map');
+    // CZ guardrails: min zoom + max bounds (with “sticky” edges)
+    const czBounds = [[48.5, 12.0], [51.1, 18.9]]; // rough bounding box
+    const map = L.map('map', {
+      maxBounds: czBounds,
+      maxBoundsViscosity: 1.0, // resist panning outside bounds
+      minZoom: 6
+    });
+
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
+
+    // Initial CZ view
     map.setView([49.8, 15.5], 7);
+
     const layerGroup = L.layerGroup().addTo(map);
 
     // ---------- Data ingest ----------
     let allRecords = [];
+    let didAutoFitOnce = false; // <<< only auto-fit on the very first render
 
     function getField(tbl, label){
       if (!Array.isArray(tbl)) return '';
@@ -224,14 +235,19 @@
         }
 
         document.getElementById('visibleCount').textContent = shown;
-        if (shown > 0 && bounds.isValid()){
+
+        // Auto-fit only once (on very first render), then never again
+        if (!didAutoFitOnce && shown > 0 && bounds.isValid()){
           map.fitBounds(bounds.pad(0.15));
+          didAutoFitOnce = true;
         }
-        document.getElementById('status').textContent = `Showing: ${fmtDate(dayNumToLocalDate(a))} – ${fmtDate(dayNumToLocalDate(b))}`;
+
+        document.getElementById('status').textContent =
+          `Showing: ${fmtDate(dayNumToLocalDate(a))} – ${fmtDate(dayNumToLocalDate(b))}`;
       };
 
       slider.noUiSlider.on('update', update);
-      update(); // initial paint
+      update(); // initial paint -> will auto-fit once if there are points
     }
   </script>
 </body>
