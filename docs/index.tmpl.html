@@ -4,40 +4,41 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Orienteering Races Map</title>
+
   <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-  
-  <!-- noUiSlider -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/nouislider@15.7.0/dist/nouislider.min.css" />
-  <script src="https://cdn.jsdelivr.net/npm/nouislider@15.7.0/dist/nouislider.min.js"></script>
 
   <style>
-    :root {
-      --bg: #0b0d10; --panel: #14171c; --muted: #9aa4b2; --text: #e6edf3; --accent: #4aa3ff;
-    }
-    html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text); font-family: system-ui, sans-serif; }
-    .app { display: grid; grid-template-rows: auto 1fr; height: 100%; }
-    .controls { display:flex; gap: 1rem; align-items:center; padding: .75rem 1rem; background: var(--panel); }
-    .controls h1 { font-size: 1rem; margin: 0; font-weight: 600; }
-    .slider-wrap { flex: 1 1 auto; }
-    #slider { margin: .25rem 0; }
-    .date-labels { display:flex; justify-content: space-between; font-size:.85rem; color: var(--muted); }
-    .pill { background: rgba(74,163,255,.12); color: var(--accent); padding: .25rem .5rem; border-radius: 999px; font-size: .8rem; }
-    .count { white-space: nowrap; }
-    #map { height: calc(100vh - 64px); width: 100%; }
+    :root { --bg:#0b0d10; --panel:#14171c; --muted:#9aa4b2; --text:#e6edf3; --accent:#4aa3ff; }
+    html, body { height:100%; margin:0; background:var(--bg); color:var(--text); font-family:system-ui, sans-serif; }
+    .app { display:grid; grid-template-rows:auto 1fr; height:100%; }
+    .controls { display:flex; gap:1rem; align-items:center; padding:.75rem 1rem; background:var(--panel); }
+    .controls h1 { font-size:1rem; margin:0; font-weight:600; }
+    .pill { background:rgba(74,163,255,.12); color:var(--accent); padding:.25rem .5rem; border-radius:999px; font-size:.8rem; white-space:nowrap; }
+    .count { white-space:nowrap; }
+    #map { height:calc(100vh - 64px); width:100%; }
 
-    /* Marker style */
-    .race-pin { width: 14px; height: 14px; border-radius: 50%; background: #4aa3ff; border: 2px solid #e6edf3; }
-
-    /* Popup styling */
-    .popup-wrap { min-width: 260px; }
-    .popup-title { font-weight: 600; margin: 0 0 .25rem 0; }
-    .popup-sub { color: var(--muted); margin: 0 0 .5rem 0; font-size: .9rem; }
-    .popup-table { width: 100%; border-collapse: collapse; font-size: .9rem; }
-    .popup-table th, .popup-table td { text-align: left; padding: .2rem .25rem; vertical-align: top; }
-    .popup-table th { color: var(--muted); font-weight: 500; white-space: nowrap; }
-    .popup-link { display:inline-block; margin-top:.5rem; color: var(--accent); text-decoration: underline; }
+    /* Slider */
+    .slider-wrap { flex:1 1 auto; display:grid; gap:.35rem; align-items:center; }
+    .slider-row { display:grid; grid-template-columns:1fr 1fr auto; gap:.75rem; align-items:center; }
+    .range { appearance:none; width:100%; height:6px; border-radius:4px; background:#243041; outline:none; }
+    .range::-webkit-slider-thumb { appearance:none; width:16px; height:16px; border-radius:50%; background:#e6edf3; border:2px solid #4aa3ff; cursor:pointer; }
+    .range::-moz-range-thumb { width:16px; height:16px; border-radius:50%; background:#e6edf3; border:2px solid #4aa3ff; cursor:pointer; }
+    .date-labels { display:flex; justify-content:space-between; font-size:.85rem; color:var(--muted); }
+    .btn { background:#1b2230; color:#e6edf3; border:1px solid #2e3a4e; padding:.45rem .7rem; border-radius:.5rem; cursor:pointer; }
+    .btn:hover { background:#222b3d; }
+    .tip { font-size:.8rem; color:var(--muted); }
+    /* Marker */
+    .race-pin { width:14px; height:14px; border-radius:50%; background:#4aa3ff; border:2px solid #e6edf3; }
+    /* Popup */
+    .popup-wrap { min-width:260px; }
+    .popup-title { font-weight:600; margin:0 0 .25rem 0; }
+    .popup-sub { color:var(--muted); margin:0 0 .5rem 0; font-size:.9rem; }
+    .popup-table { width:100%; border-collapse:collapse; font-size:.9rem; }
+    .popup-table th, .popup-table td { text-align:left; padding:.2rem .25rem; vertical-align:top; }
+    .popup-table th { color:var(--muted); font-weight:500; white-space:nowrap; }
+    .popup-link { display:inline-block; margin-top:.5rem; color:var(--accent); text-decoration:underline; }
   </style>
 </head>
 <body>
@@ -45,12 +46,20 @@
     <div class="controls">
       <h1>Orienteering Races</h1>
       <span class="pill" id="status">Loading…</span>
+
       <div class="slider-wrap">
-        <div id="slider"></div>
+        <div class="slider-row">
+          <input id="rangeA" class="range" type="range" />
+          <input id="rangeB" class="range" type="range" />
+          <button id="snapNext7" class="btn" title="Limit slider to the next 7 days">Snap to next 7</button>
+        </div>
         <div class="date-labels">
-          <span id="startLabel">—</span><span id="endLabel">—</span>
+          <span><strong>From:</strong> <span id="startLabel">—</span></span>
+          <span class="tip">Showing intersection with <span id="fixedWindow">—</span></span>
+          <span><strong>To:</strong> <span id="endLabel">—</span></span>
         </div>
       </div>
+
       <div class="count"><span id="visibleCount">0</span>/<span id="totalCount">0</span></div>
     </div>
     <div id="map"></div>
@@ -64,24 +73,29 @@
   <!--DATA:END-->
 
   <script>
-    // ---- Helpers ----
+    // ---------- Helpers ----------
+    const MS_PER_DAY = 86400000;
+
+    // Parse dates like "04.10.2025" or "2025-10-04", returning a Date at local midnight
     const parseDMY = (s) => {
       if (!s) return null;
       const iso = /^\d{4}-\d{2}-\d{2}$/;
       if (iso.test(s)) return new Date(s + "T00:00:00"); // local midnight
       const m = s.match(/^(\d{1,2})[.\/-](\d{1,2})[.\/-](\d{2,4})$/);
       if (!m) return null;
-      const d = parseInt(m[1], 10), mo = parseInt(m[2], 10) - 1, y = parseInt(m[3].length === 2 ? (2000 + parseInt(m[3], 10)) : m[3], 10);
+      const d = +m[1], mo = +m[2] - 1, y = m[3].length === 2 ? 2000 + +m[3] : +m[3];
       return new Date(y, mo, d); // local midnight
     };
+
     const fmtDate = (d) => d ? d.toLocaleDateString(undefined, {year:'numeric', month:'2-digit', day:'2-digit'}) : "";
 
-    // Local-midnight millisecond index (no UTC math anywhere)
-    const toLocalMidnightMs = (d) => d ? new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() : NaN;
+    // Convert Date -> integer "day index" using local-midnight milliseconds / MS_PER_DAY
+    const dayIndex = (d) => d ? Math.floor(new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime() / MS_PER_DAY) : NaN;
+    const dayIndexToDate = (n) => new Date(n * MS_PER_DAY); // reconstructs local date from index
 
     function dotIcon(){ return L.divIcon({ className: 'race-pin', iconSize: [14,14] }); }
 
-    // ---- Map init ----
+    // ---------- Map ----------
     const map = L.map('map');
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '&copy; OpenStreetMap contributors' }).addTo(map);
     map.setView([49.8, 15.5], 7);
@@ -89,12 +103,11 @@
 
     let allRecords = [];
 
-    // Build popup from the row's table (no tooltip used)
     function buildPopupHTML(r){
       const safe = (x) => String(x ?? '').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-      const rows = (r.rawTable || []).map(({nazev, hodnota}) => {
-        return `<tr><th>${safe((nazev||'').replace(/:$/,''))}</th><td>${safe(hodnota||'')}</td></tr>`;
-      }).join('');
+      const rows = (r.rawTable || []).map(({nazev, hodnota}) =>
+        `<tr><th>${safe((nazev||'').replace(/:$/,''))}</th><td>${safe(hodnota||'')}</td></tr>`
+      ).join('');
       const title = safe(r.name || '(bez názvu)');
       const place = safe(r.place || '');
       const date = r.date ? fmtDate(r.date) : '';
@@ -105,72 +118,109 @@
           <div class="popup-sub">${[place, date].filter(Boolean).join(" • ")}</div>
           <table class="popup-table">${rows}</table>
           ${link}
-        </div>
-      `;
+        </div>`;
     }
 
-    // Marker creation (popup only, per request)
     function makeMarker(r){
       const m = L.marker([r.lat, r.lon], { icon: dotIcon() });
       m.bindPopup(buildPopupHTML(r));
       return m;
     }
 
-    // ---- Fixed "next 7 days" window (computed once, LOCAL-midnight based) ----
-    const _today = new Date();
-    const next7StartMs = toLocalMidnightMs(_today);
-    const next7EndMs   = next7StartMs + 6 * 86400000; // inclusive range in days
+    // ---------- Fixed "next 7 days" window (LOCAL) ----------
+    const today = new Date();
+    const next7StartIdx = dayIndex(today);
+    const next7EndIdx   = next7StartIdx + 6; // inclusive
 
-    // Only show markers that are BOTH within the slider range AND within the next 7 days
-    function refreshMap(sliderAms, sliderBms){
-      // Effective intersection
-      const a = Math.max(sliderAms, next7StartMs);
-      const b = Math.min(sliderBms, next7EndMs);
+    // ---------- Slider (custom dual handle) ----------
+    const rangeA = document.getElementById('rangeA'); // lower
+    const rangeB = document.getElementById('rangeB'); // upper
+    const startLabel = document.getElementById('startLabel');
+    const endLabel = document.getElementById('endLabel');
+    const fixedWindow = document.getElementById('fixedWindow');
+
+    function setSliderBounds(minIdx, maxIdx){
+      for (const el of [rangeA, rangeB]) {
+        el.min = String(minIdx);
+        el.max = String(maxIdx);
+        el.step = "1"; // one day per tick
+      }
+      rangeA.value = String(minIdx);
+      rangeB.value = String(maxIdx);
+      updateSliderLabels();
+    }
+
+    function updateSliderLabels(){
+      const a = Math.min(+rangeA.value, +rangeB.value);
+      const b = Math.max(+rangeA.value, +rangeB.value);
+      startLabel.textContent = fmtDate(dayIndexToDate(a));
+      endLabel.textContent   = fmtDate(dayIndexToDate(b));
+    }
+
+    function getSliderRange(){
+      const a = Math.min(+rangeA.value, +rangeB.value);
+      const b = Math.max(+rangeA.value, +rangeB.value);
+      return [a, b];
+    }
+
+    function snapSliderToNext7(){
+      // Keep slider bounds the same but set handles to the next-7 range
+      rangeA.value = String(next7StartIdx);
+      rangeB.value = String(next7EndIdx);
+      updateSliderLabels();
+      const [a, b] = getSliderRange();
+      refreshMap(a, b);
+    }
+
+    document.getElementById('snapNext7').addEventListener('click', snapSliderToNext7);
+
+    for (const el of [rangeA, rangeB]) {
+      el.addEventListener('input', () => {
+        // keep labels snappy and map live
+        updateSliderLabels();
+        const [a, b] = getSliderRange();
+        refreshMap(a, b);
+      });
+      el.addEventListener('change', () => {
+        // ensure whole-day integers (already integers, but defensive)
+        el.value = String(Math.round(+el.value));
+        updateSliderLabels();
+        const [a, b] = getSliderRange();
+        refreshMap(a, b);
+      });
+    }
+
+    // ---------- Core filtering ----------
+    function refreshMap(sliderAIdx, sliderBIdx){
+      // Intersection with fixed next-7 window
+      const a = Math.max(sliderAIdx, next7StartIdx);
+      const b = Math.min(sliderBIdx, next7EndIdx);
 
       layerGroup.clearLayers();
-      let c = 0;
+      let shown = 0;
 
       if (a <= b) {
         for (const r of allRecords){
-          if (Number.isFinite(r.dateMs) && r.dateMs >= a && r.dateMs <= b){
+          if (Number.isFinite(r.dayIdx) && r.dayIdx >= a && r.dayIdx <= b){
             r.marker.addTo(layerGroup);
-            c++;
+            shown++;
           }
         }
       }
-      document.getElementById('visibleCount').textContent = c;
-    }
 
-    function initSlider(minMs,maxMs){
-      const s = document.getElementById('slider');
-      noUiSlider.create(s,{
-        start:[minMs,maxMs],
-        connect:true,
-        step:86400000, // 1 day in ms
-        range:{min:minMs,max:maxMs}
-      });
-      const st=document.getElementById('startLabel');
-      const en=document.getElementById('endLabel');
-      s.noUiSlider.on('update',(v)=>{
-        // noUiSlider gives strings; coerce to numbers
-        const [a,b]=v.map(x=>Math.round(+x));
-        st.textContent=fmtDate(new Date(a));
-        en.textContent=fmtDate(new Date(b));
-        refreshMap(a,b);
-      });
-      const [a0,b0]=s.noUiSlider.get().map(v=>Math.round(+v));
-      refreshMap(a0,b0);
+      document.getElementById('visibleCount').textContent = shown;
+      fitToVisible();
     }
 
     function fitToVisible(){
-      const b=L.latLngBounds();
-      layerGroup.eachLayer(l=>b.extend(l.getLatLng()));
-      if(b.isValid()) map.fitBounds(b.pad(0.15));
+      const bounds = L.latLngBounds();
+      layerGroup.eachLayer(l => bounds.extend(l.getLatLng()));
+      if (bounds.isValid()) map.fitBounds(bounds.pad(0.15));
     }
 
-    // ---- Transform ORIS_DATA -> records used by the map ----
-    (function(){
-      const status=document.getElementById('status');
+    // ---------- Data ingest ----------
+    (function init(){
+      const status = document.getElementById('status');
       try {
         const rows = Array.isArray(window.ORIS_DATA) ? window.ORIS_DATA : [];
         const recs = [];
@@ -182,35 +232,33 @@
         };
 
         for (const row of rows){
-          // Location from "gps" (fallback to first coordinate in "Souřadnice")
+          // Coordinates
           let lat = NaN, lon = NaN;
           const gpsRaw = row.gps || getField(row.tbl, 'Souřadnice');
           if (gpsRaw){
             const m = String(gpsRaw).match(/(-?\d+(?:\.\d+)?)[,\s]+(-?\d+(?:\.\d+)?)/);
             if (m){ lat = parseFloat(m[1]); lon = parseFloat(m[2]); }
           }
-
-          // Core fields from the table
-          const name  = getField(row.tbl, 'Název');
-          const place = getField(row.tbl, 'Místo konání');
-          const date  = parseDMY(getField(row.tbl, 'Datum'));
-          const orisId = getField(row.tbl, 'ORIS ID');
-          const link = orisId ? `https://oris.orientacnisporty.cz/Zavod?id=${encodeURIComponent(orisId)}` : '';
-
-          // Skip if no valid coordinates
           if (isNaN(lat) || isNaN(lon)) continue;
+
+          // Fields
+          const name   = getField(row.tbl, 'Název');
+          const place  = getField(row.tbl, 'Místo konání');
+          const date   = parseDMY(getField(row.tbl, 'Datum'));
+          const idRaw  = getField(row.tbl, 'ORIS ID');
+          const link   = idRaw ? `https://oris.orientacnisporty.cz/Zavod?id=${encodeURIComponent(idRaw)}` : '';
 
           const rec = {
             date,
-            dateMs: toLocalMidnightMs(date), // <-- local-midnight ms index
+            dayIdx: dayIndex(date),
             name, place, link, lat, lon,
-            rawTable: row.tbl
+            rawTable: row.tbl,
           };
           rec.marker = makeMarker(rec);
           recs.push(rec);
         }
 
-        // Sort by date (unknown dates last)
+        // Sort by date (unknown last)
         recs.sort((a,b)=>{
           if (!a.date && !b.date) return 0;
           if (!a.date) return 1;
@@ -221,25 +269,28 @@
         allRecords = recs;
         document.getElementById('totalCount').textContent = allRecords.length;
 
+        // Status label & fixed window
+        const fixedLabel = `${fmtDate(dayIndexToDate(next7StartIdx))} – ${fmtDate(dayIndexToDate(next7EndIdx))}`;
+        fixedWindow.textContent = fixedLabel;
+        status.textContent = `Filtering to: ${fixedLabel}`;
+
         if(!allRecords.length){
-          status.textContent='No valid records.';
           return;
         }
 
-        // Slider bounds: full data range using LOCAL-midnight ms
-        const dated = allRecords.filter(r=>Number.isFinite(r.dateMs));
-        const minMs = dated.length ? Math.min(...dated.map(r=>r.dateMs)) : next7StartMs;
-        const maxMs = dated.length ? Math.max(...dated.map(r=>r.dateMs)) : next7StartMs;
+        // Slider bounds from data (day indexes)
+        const dated = allRecords.filter(r => Number.isFinite(r.dayIdx));
+        const minIdx = dated.length ? Math.min(...dated.map(r => r.dayIdx)) : next7StartIdx;
+        const maxIdx = dated.length ? Math.max(...dated.map(r => r.dayIdx)) : next7StartIdx;
 
-        // Status: fixed next-7-days window (independent of slider)
-        const next7Label = `${fmtDate(new Date(next7StartMs))} – ${fmtDate(new Date(next7EndMs))}`;
-        status.textContent = `Filtering to: ${next7Label}`;
+        setSliderBounds(minIdx, maxIdx);
 
-        initSlider(minMs, maxMs);
-        fitToVisible();
-      } catch(e){
+        // Initial paint: keep slider full-span but intersection limits to next 7
+        const [a0, b0] = getSliderRange();
+        refreshMap(a0, b0);
+      } catch (e) {
         console.error(e);
-        status.textContent='Error';
+        status.textContent = 'Error';
       }
     })();
   </script>
