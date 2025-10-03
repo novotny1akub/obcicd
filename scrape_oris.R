@@ -32,9 +32,9 @@ race_scrape_fn <- function(url) {
     read_html() %>%
     html_elements("div.container-fluid") %>%
     html_elements("div.pb-1")
-
+  
   df <- tibble(
-    nazev   = one_race_html_part %>% html_elements("div.col-4") %>% html_text2(),
+    nazev = one_race_html_part %>% html_elements("div.col-4") %>% html_text2(),
     hodnota = one_race_html_part %>% html_elements("div.col-8") %>% html_text2()
   ) %>%
     filter(str_detect(nazev, "ORIS ID|Název|Datum|Místo konání|Start 00|Sport|termín přihlášek|Souřadnice"))
@@ -42,10 +42,18 @@ race_scrape_fn <- function(url) {
   gps <- df %>%
     filter(str_detect(nazev, "Souřadnice")) %>%
     pull(hodnota) %>%
-    str_extract("^[^:]+")   # keep only the part before the first colon
-
-  Sys.sleep(0.3)            # throttle a bit to be polite
-  tibble(gps = gps, tbl = list(df))
+    str_extract("^[^:]+") %>%
+    paste0("")
+  
+  date <- df %>%
+    filter(str_detect(nazev, "Datum")) %>%
+    pull(hodnota) %>%
+    head(1)
+  
+  return(tibble("gps" = gps, "date" = date, "url" = url, "tbl" = list(df)))
+  
+  Sys.sleep(0.3)
+  
 }
 
 df_all_races <- races_url %>%
@@ -61,5 +69,6 @@ html_template <- read_file(
 
 html_template %>%
   write_file(file = fs::path(wd, "index.html"))
+
 
 
