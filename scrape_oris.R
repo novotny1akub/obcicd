@@ -1,45 +1,63 @@
-# scrape_oris.R
 library(tidyverse)
+library(fs)
 library(rvest)
+library(glue)
+library(jsonlite)
 
-main <- function() {
-  message("Starting scrape: ", Sys.time())
-  zavody_html <- read_html("https://oris.orientacnisporty.cz/")
-  
-  zavody_url <- zavody_html %>%
-    html_elements("#data_table a") %>%
-    html_attr("href") %>%
-    keep(~str_detect(.x, "Zavod")) %>%
-    unique()
-  
-  scrape_zavod <- function(url) {
-    tryCatch({
-      html <- read_html(url)
-      rows <- html %>% html_elements("div.row") %>% html_text2()
-      tibble(
-        url = url,
-        datum = rows %>% str_extract("Datum:\\s*[^\r\n]+") %>% str_remove("^Datum:\\s*") %>% discard(is.na) %>% first(),
-        zavod_nazev = rows %>% str_extract("Název:\\s*[^\r\n]+") %>% str_remove("^Název:\\s*") %>% discard(is.na) %>% first(),
-        misto_konani = rows %>% str_extract("Místo konání:\\s*[^\r\n]+") %>% str_remove("^Místo konání:\\s*") %>% discard(is.na) %>% first(),
-        gps_zavod = rows %>% str_extract("-?[0-9]+\\.[0-9]+,\\s*-?[0-9]+\\.[0-9]+") %>% discard(is.na) %>% first()
-      )
-    }, error = function(e) {
-      warning("Failed: ", url, " -> ", conditionMessage(e))
-      tibble(url=url, datum=NA, zavod_nazev=NA, misto_konani=NA, gps_zavod=NA)
-    })
+fn_script_dir <- function() {
+  # Works in both interactive RStudio and non-interactive Rscript (e.g., GitHub Actions)
+  args <- commandArgs(trailingOnly = FALSE)
+  file_arg <- grep("^--file=", args, value = TRUE)
+  if (length(file_arg)) {
+    return(normalizePath(dirname(sub("^--file=", "", file_arg))))
+  } else {
+    # In Actions (Rscript), default to the current working directory (repo root)
+    return(normalizePath(getwd()))
   }
-  
-  zavody_data <- map_dfr(zavody_url, ~{ Sys.sleep(1); scrape_zavod(.x) }) |>
-    mutate(scraped_at = format(Sys.time(), "%Y-%m-%d %H:%M:%S"))
-  
-  dir.create("data", showWarnings = FALSE)
-  outfile <- file.path("data", paste0("oris_data.csv"))
-  readr::write_csv(zavody_data, outfile, na = "")
-  message("Wrote: ", outfile)
 }
 
+wd <- fn_script_dir()
 
-if (identical(environment(), globalenv())) main()
+# na 90 dní dopředu
+races_url <- glue(
+  "https://oris.orientacnisporty.cz/?date_from={today()}&date_to={today()+90}"
+) %>%
+  read_html() %>%
+  html_elements("#data_table a") %>%     # any <a> inside the table
+  html_attr("href") %>%
+  keep(~ str_detect(.x, "Zavod"))
 
+race_scrape_fn <- function(url) {
+  one_race_html_part <- url %>%
+    read_html() %>%
+    html_elements("div.container-fluid") %>%
+    html_elements("div.pb-1")
 
+  df <- tibble(
+    nazev   = one_race_html_part %>% html_elements("div.col-4") %>% html_text2(),
+    hodnota = one_race_html_part %>% html_elements("div.col-8") %>% html_text2()
+  ) %>%
+    filter(str_detect(nazev, "ORIS ID|Název|Datum|Místo konání|Start 00|Sport|termín přihlášek|Souřadnice"))
 
+  gps <- df %>%
+    filter(str_detect(nazev, "Souřadnice")) %>%
+    pull(hodnota) %>%
+    str_extract("^[^:]+")   # keep only the part before the first colon
+
+  Sys.sleep(0.3)            # throttle a bit to be polite
+  tibble(gps = gps, tbl = list(df))
+}
+
+df_all_races <- races_url %>%
+  # head() %>%              # keep for debugging if needed
+  map_dfr(race_scrape_fn)
+
+json <- toJSON(df_all_races, auto_unbox = TRUE, dataframe = "rows")
+
+html_template <- read_file(
+  "https://raw.githubusercontent.com/novotny1akub/obcicd/refs/heads/main/docs/index.tmpl.html"
+) %>%
+  str_replace("__ORIS_DATA__", json)
+
+html_template %>%
+  write_file(file = fs::path(wd, "index.html"))
