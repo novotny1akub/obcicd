@@ -49,7 +49,7 @@ race_scrape_fn <- function(url) {
 }
 
 df_all_races <- races_url %>%
-  head() %>%              # keep for debugging if needed
+  # head() %>%              # keep for debugging if needed
   map_dfr(race_scrape_fn)
 
 json <- toJSON(df_all_races, auto_unbox = TRUE, dataframe = "rows")
@@ -61,4 +61,5 @@ html_template <- read_file(
 
 html_template %>%
   write_file(file = fs::path(wd, "index.html"))
+
 
