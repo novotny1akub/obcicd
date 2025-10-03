@@ -113,14 +113,27 @@
       return m;
     }
 
-    // Only show markers with a valid date inside the current slider window
-    function refreshMap(a,b){
+    // ---- Fixed "next 7 days" window (computed once) ----
+    const today = new Date();
+    today.setHours(0,0,0,0);
+    const next7StartNum = toNumberDate(today);
+    const next7EndNum   = next7StartNum + 6; // inclusive
+
+    // Only show markers that are BOTH within the slider range AND within the next 7 days
+    function refreshMap(sliderA, sliderB){
+      // Effective intersection
+      const a = Math.max(sliderA, next7StartNum);
+      const b = Math.min(sliderB, next7EndNum);
+
       layerGroup.clearLayers();
       let c = 0;
-      for (const r of allRecords){
-        if (Number.isFinite(r.dateNum) && r.dateNum>=a && r.dateNum<=b){
-          r.marker.addTo(layerGroup);
-          c++;
+
+      if (a <= b) {
+        for (const r of allRecords){
+          if (Number.isFinite(r.dateNum) && r.dateNum >= a && r.dateNum <= b){
+            r.marker.addTo(layerGroup);
+            c++;
+          }
         }
       }
       document.getElementById('visibleCount').textContent = c;
@@ -147,7 +160,7 @@
       if(b.isValid()) map.fitBounds(b.pad(0.15));
     }
 
-    // ---- Transform new ORIS_DATA -> records used by the map ----
+    // ---- Transform ORIS_DATA -> records used by the map ----
     (function(){
       const status=document.getElementById('status');
       try {
@@ -205,14 +218,17 @@
           return;
         }
 
-        // Force the slider to the next 7 days (inclusive)
-        const today = new Date();
-        today.setHours(0,0,0,0);
-        const todayNum = toNumberDate(today);
-        const endNum = todayNum + 6; // inclusive: 7 days total
+        // Slider bounds: full data range
+        const dated = allRecords.filter(r=>Number.isFinite(r.dateNum));
+        const todayNum = next7StartNum; // already normalized to midnight
+        const minNum = dated.length ? Math.min(...dated.map(r=>r.dateNum)) : todayNum;
+        const maxNum = dated.length ? Math.max(...dated.map(r=>r.dateNum)) : todayNum;
 
-        status.textContent = 'Next 7 days';
-        initSlider(todayNum, endNum);
+        // Status: fixed next-7-days window (independent of slider)
+        const next7Label = `${fmtDate(new Date(next7StartNum*86400000))} – ${fmtDate(new Date(next7EndNum*86400000))}`;
+        status.textContent = `Filtering to: ${next7Label}`;
+
+        initSlider(minNum, maxNum);
         fitToVisible();
       } catch(e){
         console.error(e);
