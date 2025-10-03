@@ -174,7 +174,8 @@
         };
 
         for (const row of rows){
-          // Location from "gps" (fallback to first coordinate in "Souřadnice")
+          // --- Location (prefer top-level gps, fallback to "Souřadnice") ---
+          // UPDATED: take coords directly when present
           let lat = NaN, lon = NaN;
           const gpsRaw = row.gps || getField(row.tbl, 'Souřadnice');
           if (gpsRaw){
@@ -182,12 +183,16 @@
             if (m){ lat = parseFloat(m[1]); lon = parseFloat(m[2]); }
           }
 
-          // Core fields from the table
-          const name  = getField(row.tbl, 'Název');
-          const place = getField(row.tbl, 'Místo konání');
-          const date  = parseDMY(getField(row.tbl, 'Datum'));
+          // --- Core fields ---
+          const name   = getField(row.tbl, 'Název');
+          const place  = getField(row.tbl, 'Místo konání');
+
+          // UPDATED: prefer top-level date, fallback to table "Datum"
+          const date   = parseDMY(row.date) || parseDMY(getField(row.tbl, 'Datum'));
+
+          // UPDATED: prefer top-level URL; fallback to ORIS ID only if needed
           const orisId = getField(row.tbl, 'ORIS ID');
-          const link = orisId ? `https://oris.orientacnisporty.cz/Zavod?id=${encodeURIComponent(orisId)}` : '';
+          const link   = row.url || (orisId ? `https://oris.orientacnisporty.cz/Zavod?id=${encodeURIComponent(orisId)}` : '');
 
           // Skip if no valid coordinates
           if (isNaN(lat) || isNaN(lon)) continue;
