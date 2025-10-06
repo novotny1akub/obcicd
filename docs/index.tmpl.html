@@ -58,7 +58,8 @@
 
   <!--DATA:START-->
   <script>
-    // Replaced by GitHub Actions workflow
+    // Keep this placeholder – your pipeline injects the actual array here
+    // Example: window.ORIS_DATA = [...];
     window.ORIS_DATA = __ORIS_DATA__;
   </script>
   <!--DATA:END-->
@@ -146,7 +147,7 @@
       if(b.isValid()) map.fitBounds(b.pad(0.15));
     }
 
-    // ---- Transform new ORIS_DATA -> records used by the map ----
+    // ---- Transform (new) ORIS_DATA -> records used by the map ----
     (function(){
       const status=document.getElementById('status');
       try {
@@ -160,7 +161,7 @@
         };
 
         for (const row of rows){
-          // Location from "gps" (fallback to first coordinate in "Souřadnice")
+          // Coordinates: prefer top-level gps; fallback to first pair in "Souřadnice"
           let lat = NaN, lon = NaN;
           const gpsRaw = row.gps || getField(row.tbl, 'Souřadnice');
           if (gpsRaw){
@@ -168,12 +169,12 @@
             if (m){ lat = parseFloat(m[1]); lon = parseFloat(m[2]); }
           }
 
-          // Core fields from the table
-          const name  = getField(row.tbl, 'Název');
-          const place = getField(row.tbl, 'Místo konání');
-          const date  = parseDMY(getField(row.tbl, 'Datum'));
+          // Core fields from the table or top-level fallbacks
+          const name   = getField(row.tbl, 'Název') || row.name || '';
+          const place  = getField(row.tbl, 'Místo konání') || row.place || '';
+          const date   = parseDMY(getField(row.tbl, 'Datum')) || parseDMY(row.date || '');
           const orisId = getField(row.tbl, 'ORIS ID');
-          const link = orisId ? `https://oris.orientacnisporty.cz/Zavod?id=${encodeURIComponent(orisId)}` : '';
+          const link   = (row.url && /^https?:\/\//.test(row.url)) ? row.url : (orisId ? `https://oris.orientacnisporty.cz/Zavod?id=${encodeURIComponent(orisId)}` : '');
 
           // Skip if no valid coordinates
           if (isNaN(lat) || isNaN(lon)) continue;
@@ -201,7 +202,7 @@
         if(!allRecords.length){ status.textContent='No valid records.'; return; }
         status.textContent='Ready';
 
-        // Slider bounds: use min/max known dates; if any are missing, fall back to today
+        // Slider bounds: use min/max known dates; if missing, fall back to today
         const dated = allRecords.filter(r=>Number.isFinite(r.dateNum));
         const todayNum = toNumberDate(new Date());
         const minNum = dated.length ? Math.min(...dated.map(r=>r.dateNum)) : todayNum;
