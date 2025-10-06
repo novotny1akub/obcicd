@@ -64,13 +64,9 @@
   <!--DATA:END-->
 
   <script>
-    // ---------- Helpers ----------
     const MS_PER_DAY = 86400000;
-
-    // Fields to hide in the popup table
     const HIDE_FIELDS = new Set(['ORIS ID', 'Souřadnice']);
 
-    // Parse "04.10.2025" or "2025-10-04" -> Date (local midnight)
     function parseDMY(s){
       if (!s) return null;
       const iso = /^\d{4}-\d{2}-\d{2}$/;
@@ -81,10 +77,7 @@
       return new Date(y, mo, d);
     }
     const fmtDate = (d) => d ? d.toLocaleDateString(undefined, {year:'numeric', month:'2-digit', day:'2-digit'}) : "";
-
-    // Use a timezone-agnostic day number for comparisons (UTC day index)
     const toDayNumUTC = (d) => d ? Math.floor(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()) / MS_PER_DAY) : NaN;
-    // Convert day number back to a *local* Date for labels
     const dayNumToLocalDate = (n) => {
       const du = new Date(n * MS_PER_DAY);
       return new Date(du.getUTCFullYear(), du.getUTCMonth(), du.getUTCDate());
@@ -92,24 +85,15 @@
 
     function dotIcon(){ return L.divIcon({ className:'race-pin', iconSize:[14,14] }); }
 
-    // ---------- Map ----------
-    // No country bounds; allow full-world pan/zoom
-    const map = L.map('map', {
-      worldCopyJump: true // optional: seamless panning across antimeridian
-    });
-
+    const map = L.map('map', { worldCopyJump: true });
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors'
     }).addTo(map);
-
-    // Neutral starting view (auto-fit will kick in on first render)
     map.setView([20, 0], 2);
-
     const layerGroup = L.layerGroup().addTo(map);
 
-    // ---------- Data ingest ----------
     let allRecords = [];
-    let didAutoFitOnce = false; // only auto-fit on the very first render
+    let didAutoFitOnce = false;
 
     function getField(tbl, label){
       if (!Array.isArray(tbl)) return '';
@@ -143,7 +127,6 @@
       return m;
     }
 
-    // Build records from ORIS_DATA
     (function(){
       const status = document.getElementById('status');
       try {
@@ -151,7 +134,6 @@
         const recs = [];
 
         for (const row of rows){
-          // Coordinates from 'gps' or from 'Souřadnice'
           let lat = NaN, lon = NaN;
           const gpsRaw = row.gps || getField(row.tbl, 'Souřadnice');
           if (gpsRaw){
@@ -166,24 +148,12 @@
           const orisId = getField(row.tbl, 'ORIS ID');
           const link   = orisId ? `https://oris.orientacnisporty.cz/Zavod?id=${encodeURIComponent(orisId)}` : '';
 
-          const record = {
-            name, place, date, link,
-            dateNum: toDayNumUTC(date),
-            lat, lon,
-            rawTable: row.tbl
-          };
+          const record = { name, place, date, link, dateNum: toDayNumUTC(date), lat, lon, rawTable: row.tbl };
           record.marker = makeMarker(record);
           recs.push(record);
         }
 
-        // Sort by date (unknown last)
-        recs.sort((a,b)=>{
-          if (!a.date && !b.date) return 0;
-          if (!a.date) return 1;
-          if (!b.date) return -1;
-          return a.date - b.date;
-        });
-
+        recs.sort((a,b)=>!a.date?1:!b.date?-1:a.date-b.date);
         allRecords = recs;
         document.getElementById('totalCount').textContent = allRecords.length;
 
@@ -199,7 +169,6 @@
       }
     })();
 
-    // ---------- Slider + filtering (ALL races) ----------
     function initSliderAndRender(){
       const dated = allRecords.filter(r => Number.isFinite(r.dateNum));
       const minNum = dated.length ? Math.min(...dated.map(r => r.dateNum)) : toDayNumUTC(new Date());
@@ -216,11 +185,11 @@
 
       const st = document.getElementById('startLabel');
       const en = document.getElementById('endLabel');
+      const status = document.getElementById('status');
 
       const update = () => {
         const [a0, b0] = slider.noUiSlider.get().map(v => Math.round(+v));
         const a = Math.min(a0, b0), b = Math.max(a0, b0);
-
         st.textContent = fmtDate(dayNumToLocalDate(a));
         en.textContent = fmtDate(dayNumToLocalDate(b));
 
@@ -238,18 +207,17 @@
 
         document.getElementById('visibleCount').textContent = shown;
 
-        // Auto-fit only once (on very first render), then never again
         if (!didAutoFitOnce && shown > 0 && bounds.isValid()){
           map.fitBounds(bounds.pad(0.15));
           didAutoFitOnce = true;
         }
 
-        document.getElementById('status').textContent =
-          `Showing: ${fmtDate(dayNumToLocalDate(a))} – ${fmtDate(dayNumToLocalDate(b))}`;
+        // Remove "Showing: ..." text, just show static label or blank
+        status.textContent = '';
       };
 
       slider.noUiSlider.on('update', update);
-      update(); // initial paint -> will auto-fit once if there are points
+      update();
     }
   </script>
 </body>
