@@ -180,6 +180,85 @@
             }
         }
         
+        // Global tooltip management for mobile touch support
+        let activeMobileTooltip = null;
+        
+        function showMobileTooltip(content, targetElement, event) {
+            // Remove any existing tooltip
+            if (activeMobileTooltip) {
+                activeMobileTooltip.remove();
+                activeMobileTooltip = null;
+            }
+            
+            if (!content) return;
+            
+            // Create tooltip element
+            const tooltip = document.createElement('div');
+            tooltip.className = 'custom-tooltip';
+            tooltip.style.cssText = 'position: fixed; z-index: 10000; pointer-events: auto;';
+            tooltip.innerHTML = content;
+            
+            // Get target position
+            const rect = targetElement.getBoundingClientRect();
+            const touch = event && event.touches && event.touches[0] ? event.touches[0] : null;
+            
+            // Position tooltip
+            let left, top;
+            if (touch) {
+                // Position near touch point
+                left = touch.clientX + 10;
+                top = touch.clientY + 10;
+            } else {
+                // Position below cell
+                left = rect.left + (rect.width / 2) - 200; // Center on cell, offset for tooltip width
+                top = rect.bottom + 5;
+            }
+            
+            // Keep tooltip within viewport
+            tooltip.style.left = Math.max(10, Math.min(left, window.innerWidth - 410)) + 'px';
+            tooltip.style.top = Math.max(10, Math.min(top, window.innerHeight - 410)) + 'px';
+            
+            document.body.appendChild(tooltip);
+            activeMobileTooltip = tooltip;
+            
+            // Auto-hide after 5 seconds or on touch elsewhere
+            const hideTimeout = setTimeout(() => {
+                hideMobileTooltip();
+            }, 5000);
+            
+            // Hide on touch outside
+            const hideOnTouch = (e) => {
+                if (!tooltip.contains(e.target) && !targetElement.contains(e.target)) {
+                    hideMobileTooltip();
+                    document.removeEventListener('touchstart', hideOnTouch);
+                    document.removeEventListener('click', hideOnTouch);
+                }
+            };
+            
+            // Add listeners with a small delay to avoid immediate hide
+            setTimeout(() => {
+                document.addEventListener('touchstart', hideOnTouch, { once: true });
+                document.addEventListener('click', hideOnTouch, { once: true });
+            }, 100);
+            
+            // Store cleanup function
+            tooltip._cleanup = () => {
+                clearTimeout(hideTimeout);
+                document.removeEventListener('touchstart', hideOnTouch);
+                document.removeEventListener('click', hideOnTouch);
+            };
+        }
+        
+        function hideMobileTooltip() {
+            if (activeMobileTooltip) {
+                if (activeMobileTooltip._cleanup) {
+                    activeMobileTooltip._cleanup();
+                }
+                activeMobileTooltip.remove();
+                activeMobileTooltip = null;
+            }
+        }
+        
         // Cache for complete Czech Republic SVG (all paths)
         let czSvgData = null;
         
@@ -315,12 +394,63 @@
                 filter: 'agNumberColumnFilter',
                 cellRenderer: function(params) {
                     const count = params.value || 0;
+                    const entries = params.data.our_future_entries_raw;
                     
                     if (count === 0) {
                         return '<span style="color: #999;">0</span>';
                     }
                     
-                    return `<span class="entries-count" style="cursor: pointer; -webkit-tap-highlight-color: transparent;">${count}</span>`;
+                    // Create wrapper element for touch support
+                    const wrapper = document.createElement('div');
+                    wrapper.style.cssText = 'width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;';
+                    
+                    const span = document.createElement('span');
+                    span.className = 'entries-count';
+                    span.style.cssText = 'cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none;';
+                    span.textContent = count;
+                    wrapper.appendChild(span);
+                    
+                    // Build tooltip content
+                    let tooltipContent = null;
+                    if (count > 0 && entries && Array.isArray(entries) && entries.length > 0) {
+                        let tableRows = '';
+                        entries.forEach(entry => {
+                            const classDesc = (entry.ClassDesc || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            const name = (entry.Name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            const si = (entry.SI || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            const fee = (entry.Fee || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            tableRows += `<tr><td>${classDesc}</td><td>${name}</td><td>${si}</td><td>${fee}</td></tr>`;
+                        });
+                        tooltipContent = `<strong>Entries (${count})</strong><table><thead><tr><th>Class</th><th>Name</th><th>SI</th><th>Fee</th></tr></thead><tbody>${tableRows}</tbody></table>`;
+                    }
+                    
+                    // Handle touch events for mobile
+                    const handleTouchStart = (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (tooltipContent) {
+                            showMobileTooltip(tooltipContent, wrapper, e);
+                        }
+                    };
+                    
+                    // Handle click events (desktop fallback)
+                    const handleClick = (e) => {
+                        // Only handle click if no touch events were fired (desktop)
+                        if (!('ontouchstart' in window) && tooltipContent) {
+                            showMobileTooltip(tooltipContent, wrapper, e);
+                        }
+                    };
+                    
+                    wrapper.addEventListener('touchstart', handleTouchStart, { passive: false });
+                    wrapper.addEventListener('click', handleClick);
+                    
+                    // Cleanup on destroy
+                    params.addDestroyCallback(() => {
+                        wrapper.removeEventListener('touchstart', handleTouchStart);
+                        wrapper.removeEventListener('click', handleClick);
+                    });
+                    
+                    return wrapper;
                 },
                 tooltipValueGetter: function(params) {
                     const entries = params.data.our_future_entries_raw;
@@ -330,7 +460,7 @@
                         return null;
                     }
                     
-                    // Build HTML table for tooltip
+                    // Build HTML table for tooltip (for desktop hover)
                     let tableRows = '';
                     entries.forEach(entry => {
                         const classDesc = (entry.ClassDesc || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -352,12 +482,62 @@
                 filter: 'agNumberColumnFilter',
                 cellRenderer: function(params) {
                     const count = params.value || 0;
+                    const startLists = params.data.our_future_start_lists_raw;
                     
                     if (count === 0) {
                         return '<span style="color: #999;">0</span>';
                     }
                     
-                    return `<span class="entries-count" style="cursor: pointer; -webkit-tap-highlight-color: transparent;">${count}</span>`;
+                    // Create wrapper element for touch support
+                    const wrapper = document.createElement('div');
+                    wrapper.style.cssText = 'width: 100%; height: 100%; display: flex; align-items: center; justify-content: center;';
+                    
+                    const span = document.createElement('span');
+                    span.className = 'entries-count';
+                    span.style.cssText = 'cursor: pointer; -webkit-tap-highlight-color: transparent; user-select: none;';
+                    span.textContent = count;
+                    wrapper.appendChild(span);
+                    
+                    // Build tooltip content
+                    let tooltipContent = null;
+                    if (count > 0 && startLists && Array.isArray(startLists) && startLists.length > 0) {
+                        let tableRows = '';
+                        startLists.forEach(startList => {
+                            const classDesc = (startList.ClassDesc || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            const name = (startList.Name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            const startTime = (startList.StartTime || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            tableRows += `<tr><td>${classDesc}</td><td>${name}</td><td>${startTime}</td></tr>`;
+                        });
+                        tooltipContent = `<strong>Start Lists (${count})</strong><table><thead><tr><th>Class</th><th>Name</th><th>Start Time</th></tr></thead><tbody>${tableRows}</tbody></table>`;
+                    }
+                    
+                    // Handle touch events for mobile
+                    const handleTouchStart = (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (tooltipContent) {
+                            showMobileTooltip(tooltipContent, wrapper, e);
+                        }
+                    };
+                    
+                    // Handle click events (desktop fallback)
+                    const handleClick = (e) => {
+                        // Only handle click if no touch events were fired (desktop)
+                        if (!('ontouchstart' in window) && tooltipContent) {
+                            showMobileTooltip(tooltipContent, wrapper, e);
+                        }
+                    };
+                    
+                    wrapper.addEventListener('touchstart', handleTouchStart, { passive: false });
+                    wrapper.addEventListener('click', handleClick);
+                    
+                    // Cleanup on destroy
+                    params.addDestroyCallback(() => {
+                        wrapper.removeEventListener('touchstart', handleTouchStart);
+                        wrapper.removeEventListener('click', handleClick);
+                    });
+                    
+                    return wrapper;
                 },
                 tooltipValueGetter: function(params) {
                     const startLists = params.data.our_future_start_lists_raw;
@@ -367,7 +547,7 @@
                         return null;
                     }
                     
-                    // Build HTML table for tooltip
+                    // Build HTML table for tooltip (for desktop hover)
                     let tableRows = '';
                     startLists.forEach(startList => {
                         const classDesc = (startList.ClassDesc || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
