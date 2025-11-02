@@ -563,7 +563,12 @@
                     startLists.forEach(startList => {
                         const classDesc = (startList.ClassDesc || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                         const name = (startList.Name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                        const startTime = (startList.StartTime || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                        // Extract only the time portion (format: "YYYY-MM-DD HH:MM:SS" -> "HH:MM:SS")
+                        let startTime = startList.StartTime || '';
+                        if (startTime && startTime.includes(' ')) {
+                            startTime = startTime.split(' ')[1];
+                        }
+                        startTime = startTime.replace(/</g, '&lt;').replace(/>/g, '&gt;');
                         tableRows += `<tr><td>${classDesc}</td><td>${name}</td><td>${startTime}</td></tr>`;
                     });
                     
@@ -798,7 +803,12 @@
                         startLists.forEach(startList => {
                             const classDesc = (startList.ClassDesc || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
                             const name = (startList.Name || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                            const startTime = (startList.StartTime || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                            // Extract only the time portion (format: "YYYY-MM-DD HH:MM:SS" -> "HH:MM:SS")
+                            let startTime = startList.StartTime || '';
+                            if (startTime && startTime.includes(' ')) {
+                                startTime = startTime.split(' ')[1];
+                            }
+                            startTime = startTime.replace(/</g, '&lt;').replace(/>/g, '&gt;');
                             tableRows += `<tr><td>${classDesc}</td><td>${name}</td><td>${startTime}</td></tr>`;
                         });
                         
