@@ -3,7 +3,7 @@ name: CI
 on:
   workflow_dispatch:
   schedule:
-    - cron: "45 13 * * *"  # Every day at 15:45 Prague (13:45 UTC)
+    - cron: "45 6-15 * * *"  # Every hour from 07:45 to 16:45 Prague Time (UTC+1)
 
 permissions:
   contents: write
