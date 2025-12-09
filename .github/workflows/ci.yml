@@ -31,9 +31,7 @@ jobs:
           apt-get update
           apt-get install -y \
             r-cran-tidyverse \
-            r-cran-stringr r-cran-purrr r-cran-readr \
-            r-cran-fs r-cran-glue r-cran-jsonlite \
-            r-cran-lubridate r-cran-curl r-cran-httr
+            r-cran-fs
 
       - name: Run scraper
         run: Rscript ob_api.R
