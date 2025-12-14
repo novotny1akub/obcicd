@@ -515,7 +515,18 @@
                 }
             },
             { field: 'date_label', headerName: 'Date Label', width: 180, filter: 'agTextColumnFilter' },
-            { field: 'km_from_me', headerName: 'Dist (km)', width: 100, filter: 'agNumberColumnFilter' },
+            { 
+                field: 'km_from_me', 
+                headerName: 'Dist (km)', 
+                width: 100, 
+                filter: 'agNumberColumnFilter',
+                comparator: function(valueA, valueB, nodeA, nodeB, isDescending) {
+                    if (valueA === valueB) return 0;
+                    if (valueA === null || valueA === undefined) return 1; // Always push nulls to the bottom
+                    if (valueB === null || valueB === undefined) return -1; // Always push nulls to the bottom
+                    return valueA - valueB;
+                }
+            },
             { 
                 field: 'name', 
                 headerName: 'Name', 
