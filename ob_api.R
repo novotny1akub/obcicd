@@ -81,6 +81,42 @@ get_our_start_list <- function(event_id) {
   return(j)
 }
 
+my_weekend_label <- function(date, ref_date = today()) {
+  ref_wday <- wday(ref_date, week_start = 1)  # Mon = 1
+  
+  # Friday of the reference week
+  this_weekend_start <- ref_date + (5 - ref_wday)
+  
+  # difference in days from reference Friday
+  diff_days <- as.integer(date - this_weekend_start)
+  
+  # difference in days from today
+  diff_today <- as.integer(date - ref_date)
+  
+  # signed label using - / + (0 included in +)
+  diff_lbl <- if_else(
+    diff_today < 0,
+    paste0(diff_today, "d"),
+    paste0("+", diff_today, "d")
+  )
+  
+  weekend_lbl <- case_when(
+    diff_days >= -7 & diff_days <= -5 ~ "past PaSoNe",
+    diff_days >= 0  & diff_days <= 2  ~ "this PaSoNe",
+    diff_days >= 7  & diff_days <= 9  ~ "next PaSoNe",
+    diff_days >= 14 & diff_days <= 16 ~ "next2 PaSoNe",
+    diff_days >= 21 & diff_days <= 23 ~ "next3 PaSoNe",
+    
+    TRUE ~ ""
+  )
+  
+  if_else(
+    weekend_lbl == "",
+    diff_lbl,
+    paste(diff_lbl, weekend_lbl)
+  )
+}
+
 fn_script_dir <- function() {
   this_file <- grep("^--file=", commandArgs(), value = TRUE)
   this_file <- gsub("^--file=", "", this_file)
@@ -100,7 +136,10 @@ fn_script_dir <- function() {
 
 wd <- fn_script_dir() 
 
-events_df <- get_event_list(date_from = current_date - days(7), date_to = current_date + days(30))
+events_df <- get_event_list(date_from = current_date - days(7), date_to = current_date + days(30)) %>%
+  mutate(
+    date_label = my_weekend_label(date)
+  )
 
 our_future_entries <- events_df %>%
   filter(cst_entries >= 1 & date >= current_date) %>%
