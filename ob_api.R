@@ -5,6 +5,7 @@ library(httr)
 library(tidyverse)
 library(purrr)
 library(glue)
+library(geosphere)
 
 
 `%||%` <- function(x, y = NA_character_) {
@@ -136,10 +137,21 @@ fn_script_dir <- function() {
 
 wd <- fn_script_dir() 
 
+# Base coordinates for distance calculation (Nad Okrouhlíkem)
+base_lat <- 50.1217614
+base_lon <- 14.4670811
+
 events_df <- get_event_list(date_from = current_date - days(7), date_to = current_date + days(30)) %>%
+  rowwise() %>%
   mutate(
-    date_label = my_weekend_label(date)
-  )
+    date_label = my_weekend_label(date),
+    km_from_me = if_else(
+      !is.na(gps_lat) & !is.na(gps_lon) & gps_lat != 0 & gps_lon != 0,
+      round(distHaversine(c(base_lon, base_lat), c(gps_lon, gps_lat)) / 1000, 1),
+      NA_real_
+    )
+  ) %>%
+  ungroup()
 
 our_future_entries <- events_df %>%
   filter(cst_entries >= 1 & date >= current_date) %>%
