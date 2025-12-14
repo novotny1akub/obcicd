@@ -107,6 +107,7 @@ our_future_entries <- events_df %>%
   pull(event_id) %>%
   # head(2) %>%
   map_df(~ tryCatch(get_our_entries(.x), error = function(e) NULL)) %>% 
+  bind_rows(tibble(event_id = character())) %>%
   group_by(event_id) %>%
   summarise(
     our_future_entries = list(pick(everything()))
@@ -118,6 +119,7 @@ our_future_start_lists <- events_df %>%
   filter(cst_entries >= 1 & date >= current_date) %>%
   pull(event_id) %>%
   map_df(~ tryCatch(get_our_start_list(.x), error = function(e) NULL)) %>%
+  bind_rows(tibble(event_id = character())) %>%
   group_by(event_id) %>%
   summarise(our_future_start_lists = list(pick(everything()))) %>%
   ungroup()
