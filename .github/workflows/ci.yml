@@ -31,7 +31,8 @@ jobs:
           apt-get update
           apt-get install -y \
             r-cran-tidyverse \
-            r-cran-fs
+            r-cran-fs \
+            r-cran-geosphere
 
       - name: Run scraper
         run: Rscript ob_api.R
