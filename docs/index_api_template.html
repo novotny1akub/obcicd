@@ -478,7 +478,43 @@
         // Column definitions
         const columnDefs = [
             { field: 'event_id', headerName: 'Event ID', width: 100, pinned: 'left', filter: 'agNumberColumnFilter', hide: true },
-            { field: 'date', headerName: 'Date', width: 120, filter: 'agDateColumnFilter' },
+            { 
+                field: 'date', 
+                headerName: 'Date', 
+                width: 120, 
+                filter: 'agDateColumnFilter',
+                filterParams: {
+                    comparator: function(filterLocalDateAtMidnight, cellValue) {
+                        if (cellValue == null) return -1;
+                        
+                        // Parse string date "YYYY-MM-DD"
+                        const dateParts = cellValue.split('-');
+                        if (dateParts.length !== 3) return -1;
+                        
+                        const year = Number(dateParts[0]);
+                        const month = Number(dateParts[1]) - 1; // JS months are 0-based
+                        const day = Number(dateParts[2]);
+                        
+                        const cellDate = new Date(year, month, day);
+                        
+                        // Compare dates (ignoring time)
+                        if (filterLocalDateAtMidnight.getTime() === cellDate.getTime()) {
+                            return 0;
+                        }
+                        
+                        if (cellDate < filterLocalDateAtMidnight) {
+                            return -1;
+                        }
+                        
+                        if (cellDate > filterLocalDateAtMidnight) {
+                            return 1;
+                        }
+                        
+                        return 0;
+                    }
+                }
+            },
+            { field: 'date_label', headerName: 'Date Label', width: 180, filter: 'agTextColumnFilter' },
             { 
                 field: 'name', 
                 headerName: 'Name', 
@@ -775,14 +811,21 @@
                 params.api.closeToolPanel();
                 // Auto-size the entries and start lists columns to fit their headers
                 params.api.autoSizeColumns(['our_future_entries_count', 'our_future_start_lists_count']);
-                // Filter rows where 'Our Entries' is greater than 0
-                params.api.setFilterModel({
-                    our_future_entries_count: {
-                        filterType: 'number',
-                        type: 'greaterThan',
-                        filter: 0
-                    }
-                });
+                
+                // Check if any row has future entries > 0
+                const hasFutureEntries = processedData.some(r => r.our_future_entries_count > 0);
+                
+                // Only apply filter if there are actually future entries to show
+                if (hasFutureEntries) {
+                    // Filter rows where 'Our Entries' is greater than 0
+                    params.api.setFilterModel({
+                        our_future_entries_count: {
+                            filterType: 'number',
+                            type: 'greaterThan',
+                            filter: 0
+                        }
+                    });
+                }
             },
             onCellClicked: function(params) {
                 // Handle clicks on Our Entries column
