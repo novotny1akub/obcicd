@@ -15,8 +15,8 @@ library(geosphere)
 current_date <- today()
 
 get_event_list <- function(date_from, date_to) {
-  # date_from = "2025-11-21"; date_to = "2025-12-31"
-  url <- glue("https://oris.ceskyorientak.cz/API/?format=json&method=getEventList&datefrom={date_from}&dateto={date_to}&myClubId=23&all=1")
+  # date_from = "2025-11-21"; date_to = "2025-12-31", TAP = 168?
+  url <- glue("https://oris.ceskyorientak.cz/API/?format=json&method=getEventList&datefrom={date_from}&dateto={date_to}&myClubId=168&all=1")
   r <- GET(url)
   stop_for_status(r)
   j <- fromJSON(content(r, as = "text", encoding = "UTF-8"), simplifyVector = FALSE)
@@ -55,8 +55,9 @@ get_our_entries <- function(event_id) {
     bind_rows() %>%
     filter(
       RegNo %in% c('CST6501', 'CST6550', 'CST8902', 'CST8351', 'TAP1751', 'CST1950', 'CST2100', 'CST8750', 'CST8700', 'CST8903') |
+        RegNo %in% c('TAP6500', 'TAP6550', 'TAP8900', 'TAP8901', 'TAP8353', 'TAP1751', 'TAP1952', 'TAP2100', 'TAP8754') |
         str_detect(Name, "^Nepejch") |
-        SI %in% c("2164948")
+        SI %in% c("2164948", "8130389", "2118474", "8170117", "2112761", "8051083", "8537300", "8534486", "8520931", "1425376", "2169688", "8033691")
     ) %>%
     select(ClassDesc, Name, SI, Fee) %>%
     mutate(event_id)
@@ -73,7 +74,9 @@ get_our_start_list <- function(event_id) {
     bind_rows() %>%
     filter(
       RegNo %in% c('CST6501', 'CST6550', 'CST8902', 'CST8351', 'TAP1751', 'CST1950', 'CST2100', 'CST8750', 'CST8700', 'CST8903') |
-        str_detect(Name, "^Nepejch")
+        RegNo %in% c('TAP6500', 'TAP6550', 'TAP8900', 'TAP8901', 'TAP8353', 'TAP1751', 'TAP1952', 'TAP2100', 'TAP8754') |
+        str_detect(Name, "^Nepejch") |
+        SI %in% c("2164948", "8130389", "2118474", "8170117", "2112761", "8051083", "8537300", "8534486", "8520931", "1425376", "2169688", "8033691")
     ) %>%
     select(ClassDesc, Name, StartTime) %>%
     arrange(StartTime) %>%
@@ -137,7 +140,7 @@ fn_script_dir <- function() {
 
 wd <- fn_script_dir() 
 
-# Base coordinates for distance calculation (Nad Okrouhlíkem)
+# Base coordinates for distance calculation (Nad OkrouhlÃ­kem)
 base_lat <- 50.1217614
 base_lon <- 14.4670811
 
@@ -194,4 +197,3 @@ html_out <- html_template %>%
 
 html_out %>%
   write_file(file = fs::path(wd, "index_api.html"))
-  
