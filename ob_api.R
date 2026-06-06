@@ -51,7 +51,7 @@ get_our_entries <- function(event_id) {
   r <- GET(url)
   stop_for_status(r)
   j <- fromJSON(content(r, as = "text", encoding = "UTF-8"), simplifyVector = FALSE)$Data %||%
-    tibble(RegNo = NA, Name = NA, SI = NA, ClassDesc = NA, Fee = NA) %>%
+    tibble(RegNo = NA_character_, Name = NA_character_, SI = NA_character_, ClassDesc = NA_character_, Fee = NA_character_) %>%
     bind_rows() %>%
     filter(
       RegNo %in% c('CST6501', 'CST6550', 'CST8902', 'CST8351', 'TAP1751', 'CST1950', 'CST2100', 'CST8750', 'CST8700', 'CST8903') |
