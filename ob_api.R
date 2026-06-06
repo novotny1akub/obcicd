@@ -51,7 +51,7 @@ get_our_entries <- function(event_id) {
   r <- GET(url)
   stop_for_status(r)
   j <- fromJSON(content(r, as = "text", encoding = "UTF-8"), simplifyVector = FALSE)$Data %||%
-    tibble(RegNo = NA_character_, Name = NA_character_, SI = NA_character_, ClassDesc = NA_character_, Fee = NA_real_) %>%
+    tibble(RegNo = NA_character_, Name = NA_character_, SI = NA_character_, ClassDesc = NA_character_, Fee = NA_character_) %>%
     bind_rows() %>%
     mutate(Fee = as.numeric(Fee)) %>%
     filter(
