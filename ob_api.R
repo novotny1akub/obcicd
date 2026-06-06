@@ -53,6 +53,7 @@ get_our_entries <- function(event_id) {
   j <- fromJSON(content(r, as = "text", encoding = "UTF-8"), simplifyVector = FALSE)$Data %||%
     tibble(RegNo = NA_character_, Name = NA_character_, SI = NA_character_, ClassDesc = NA_character_, Fee = NA_real_) %>%
     bind_rows() %>%
+    mutate(Fee = as.numeric(Fee)) %>%
     filter(
       RegNo %in% c('CST6501', 'CST6550', 'CST8902', 'CST8351', 'TAP1751', 'CST1950', 'CST2100', 'CST8750', 'CST8700', 'CST8903') |
         RegNo %in% c('TAP6500', 'TAP6550', 'TAP8900', 'TAP8901', 'TAP8353', 'TAP1751', 'TAP1952', 'TAP2100', 'TAP8754') |
